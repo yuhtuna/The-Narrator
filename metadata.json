@@ -1,0 +1,5 @@
+{
+  "name": "The Narrator",
+  "description": "A real-time, generative FMV-style interactive visual novel using Gemini models.",
+  "requestFramePermissions": ["microphone"]
+}
