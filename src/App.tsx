@@ -3,67 +3,67 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { GameLayout } from './components/layout/GameLayout';
 import { DialogueBox } from './components/ui/DialogueBox';
-import { ChoiceOverlay } from './components/ui/ChoiceOverlay';
-import { InventoryDrawer } from './components/ui/InventoryDrawer';
-import { Backpack } from 'lucide-react';
+import { Dashboard, GameConfig } from './components/ui/Dashboard';
+import { useAudioSync } from './hooks/useAudioSync';
+import { Mic } from 'lucide-react';
 
 // Mock API function to simulate backend latency
-const mockDirectorApi = async (action: string) => {
+const mockDirectorApi = async (audioBlob: Blob, config: GameConfig | null) => {
   return new Promise<{ imageUrl: string; text: string }>((resolve) => {
     setTimeout(() => {
       // Return a random image to demonstrate the transition
       const randomId = Math.floor(Math.random() * 1000);
       resolve({
         imageUrl: `https://picsum.photos/seed/${randomId}/1920/1080`,
-        text: `You chose to "${action}". The scene shifts as the consequences of your action unfold. The neon lights flicker in response.`
+        text: `You spoke into the void. The ${config?.genre || 'world'} shifts around you, reacting to your voice. The neon lights flicker in response.`
       });
     }, 2000); // 2 second simulated delay
   });
 };
 
 export default function App() {
-  // State Machine
+  // View Routing State
+  const [gameState, setGameState] = useState<'setup' | 'playing'>('setup');
+  const [gameConfig, setGameConfig] = useState<GameConfig | null>(null);
+
+  // Visual State Machine
   const [currentImage, setCurrentImage] = useState("https://picsum.photos/seed/cyberpunk/1920/1080");
   const [nextImage, setNextImage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   
   // Narrative State
-  const [narrative, setNarrative] = useState("The neon rain slicks the pavement. A contact is waiting in the shadows.");
-  const [isInventoryOpen, setIsInventoryOpen] = useState(false);
+  const [narrative, setNarrative] = useState("The neon rain slicks the pavement. The city awaits your command.");
 
-  // Mock Choices
-  const choices = [
-    { id: "1", text: "Approach the contact.", type: "action" as const },
-    { id: "2", text: "Scan the area.", type: "investigate" as const },
-    { id: "3", text: "Hack the terminal.", type: "action" as const }
-  ];
-
-  const handleAction = async (choiceId: string) => {
-    if (isProcessing) return;
-
-    // State 2: Processing (Time Freeze)
-    // Instantly apply grayscale via state change
-    setIsProcessing(true);
-    
-    // Find the text of the choice for the mock API
-    const choice = choices.find(c => c.id === choiceId);
-    const actionText = choice?.text || "Unknown action";
-
-    try {
-      // Call Mock API
-      const response = await mockDirectorApi(actionText);
+  // Audio Sync Hook
+  const { isRecording, startRecording, playNarration } = useAudioSync({
+    onRecordingComplete: async (audioBlob) => {
+      // State 2: Processing (Time Freeze)
+      setIsProcessing(true);
       
-      // Start the "Hidden Cache" phase
-      // We do NOT swap the image yet. We set nextImage to trigger the hidden <img> render.
-      setNextImage(response.imageUrl);
-      setNarrative(response.text);
-    } catch (error) {
-      console.error("API Error", error);
-      setIsProcessing(false);
+      try {
+        // Call Mock API with audio and config
+        const response = await mockDirectorApi(audioBlob, gameConfig);
+        
+        // Start the "Hidden Cache" phase
+        // We do NOT swap the image yet. We set nextImage to trigger the hidden <img> render.
+        setNextImage(response.imageUrl);
+        setNarrative(response.text);
+        
+        // Trigger voice handoff
+        playNarration(response.text);
+      } catch (error) {
+        console.error("API Error", error);
+        setIsProcessing(false);
+      }
     }
+  });
+
+  const handleStartGame = (config: GameConfig) => {
+    setGameConfig(config);
+    setGameState('playing');
   };
 
   const handleNewImageLoaded = () => {
@@ -77,6 +77,12 @@ export default function App() {
     }
   };
 
+  // 1. The Dashboard View
+  if (gameState === 'setup') {
+    return <Dashboard onStartGame={handleStartGame} />;
+  }
+
+  // 2. The Game View
   return (
     <GameLayout>
       <div className="relative w-full h-screen overflow-hidden bg-black">
@@ -115,16 +121,25 @@ export default function App() {
         {/* Vignette Overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-black/40 pointer-events-none z-10" />
 
-
         {/* --- UI LAYER --- */}
 
-        {/* HUD */}
-        <div className="absolute top-6 right-6 z-50">
-          <button 
-            onClick={() => setIsInventoryOpen(true)}
-            className="p-3 bg-black/50 backdrop-blur-md border border-white/10 rounded-full hover:bg-emerald-500/20 transition-colors"
+        {/* Microphone Interaction */}
+        <div className="absolute bottom-40 left-0 right-0 flex justify-center z-40">
+          <button
+            onClick={startRecording}
+            disabled={isRecording || isProcessing}
+            className={`group relative flex items-center gap-3 px-8 py-4 rounded-full font-bold tracking-widest uppercase transition-all duration-300 ${
+              isRecording 
+                ? 'bg-red-600/80 text-white shadow-[0_0_30px_rgba(220,38,38,0.8)] scale-105 animate-pulse' 
+                : isProcessing
+                ? 'bg-zinc-800/50 text-zinc-500 cursor-not-allowed'
+                : 'bg-black/60 hover:bg-emerald-900/60 text-emerald-400 border border-emerald-500/30 hover:border-emerald-400 backdrop-blur-md hover:shadow-[0_0_20px_rgba(52,211,153,0.4)]'
+            }`}
           >
-            <Backpack className="w-6 h-6 text-emerald-400" />
+            <Mic className={`w-6 h-6 ${isRecording ? 'animate-bounce' : ''}`} />
+            <span>
+              {isRecording ? 'Recording...' : isProcessing ? 'Processing...' : 'Hold to Speak (Max 4s)'}
+            </span>
           </button>
         </div>
 
@@ -135,25 +150,8 @@ export default function App() {
           isStreaming={!isProcessing} 
         />
 
-        {/* Choices - Hide during processing to prevent double-clicks and enhance "Freeze" effect */}
-        {!isProcessing && (
-          <ChoiceOverlay 
-            choices={choices} 
-            onSelect={handleAction}
-            isListening={false}
-          />
-        )}
-
-        {/* Inventory */}
-        <InventoryDrawer 
-          isOpen={isInventoryOpen} 
-          onClose={() => setIsInventoryOpen(false)} 
-          items={[
-            { id: '1', name: 'Encrypted Drive', description: 'Contains the stolen schematics.', icon: 'usb' }
-          ]} 
-        />
-
       </div>
     </GameLayout>
   );
 }
+
