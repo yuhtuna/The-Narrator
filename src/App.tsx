@@ -9,9 +9,10 @@ import { DialogueBox } from './components/ui/DialogueBox';
 import { Dashboard, GameConfig } from './components/ui/Dashboard';
 import { useAudioSync } from './hooks/useAudioSync';
 import { Mic } from 'lucide-react';
+import { processImageForAPI } from './utils/imageUtils';
 
 // Mock API function to simulate backend latency
-const mockDirectorApi = async (audioBlob: Blob, config: GameConfig | null) => {
+const mockDirectorApi = async (audioBlob: Blob, config: GameConfig | null, referenceImage: string | null) => {
   return new Promise<{ imageUrl: string; text: string }>((resolve) => {
     setTimeout(() => {
       // Return a random image to demonstrate the transition
@@ -28,6 +29,7 @@ export default function App() {
   // View Routing State
   const [gameState, setGameState] = useState<'setup' | 'playing'>('setup');
   const [gameConfig, setGameConfig] = useState<GameConfig | null>(null);
+  const [userReferenceImage, setUserReferenceImage] = useState<string | null>(null);
 
   // Visual State Machine
   const [currentImage, setCurrentImage] = useState("https://picsum.photos/seed/cyberpunk/1920/1080");
@@ -44,8 +46,8 @@ export default function App() {
       setIsProcessing(true);
       
       try {
-        // Call Mock API with audio and config
-        const response = await mockDirectorApi(audioBlob, gameConfig);
+        // Call Mock API with audio, config, and the processed reference image
+        const response = await mockDirectorApi(audioBlob, gameConfig, userReferenceImage);
         
         // Start the "Hidden Cache" phase
         // We do NOT swap the image yet. We set nextImage to trigger the hidden <img> render.
@@ -61,7 +63,19 @@ export default function App() {
     }
   });
 
-  const handleStartGame = (config: GameConfig) => {
+  const handleStartGame = async (config: GameConfig) => {
+    // Process custom image if it exists
+    if (config.customImage) {
+      try {
+        const compressedImage = await processImageForAPI(config.customImage);
+        setUserReferenceImage(compressedImage);
+        console.log("Custom image processed and stored (Base64 length):", compressedImage.length);
+      } catch (error) {
+        console.error("Failed to process custom image:", error);
+        // Fallback or error handling could go here
+      }
+    }
+
     setGameConfig(config);
     setGameState('playing');
   };
