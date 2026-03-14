@@ -4,11 +4,13 @@ import { DialogueBox } from './components/ui/DialogueBox';
 import { Dashboard, GameConfig } from './components/ui/Dashboard';
 import { ArtifactScanner } from './components/ui/ArtifactScanner';
 import { InventoryDrawer } from './components/ui/InventoryDrawer';
+import { ChoiceOverlay } from './components/ui/ChoiceOverlay';
 import { useAudioSync } from './hooks/useAudioSync';
 import { Mic, Sparkles, Backpack } from 'lucide-react';
 import { processImageForAPI } from './utils/imageUtils';
 import { AnimatePresence, motion } from 'motion/react';
 import { useGame } from './context/GameContext';
+import { Choice } from './types/director';
 
 export default function App() {
   const { state, dispatch } = useGame();
@@ -28,9 +30,10 @@ export default function App() {
   // Narrative State
   const [narrative, setNarrative] = useState("The neon rain slicks the pavement. The city awaits your command.");
   const [alexExpression, setAlexExpression] = useState<'neutral' | 'surprised' | 'serious' | 'thinking'>('neutral');
+  const [choices, setChoices] = useState<Choice[]>([]);
 
   // Audio Sync Hook
-  const { isRecording, startRecording, playNarration } = useAudioSync({
+  const { isRecording, startRecording, playNarration, playFillerLine } = useAudioSync({
     onRecordingComplete: async (audioBlob) => {
       // State 2: Processing (Time Freeze)
       setIsProcessing(true);
@@ -43,8 +46,9 @@ export default function App() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             userAction: "The player speaks into the comms.",
-            previousContext: narrative,
-            imageBase64: userReferenceImage
+            previousContext: `Setting: ${gameConfig?.genre} / ${gameConfig?.style}. Protagonist: Alex. ${narrative}`,
+            imageBase64: userReferenceImage,
+            gameConfig
           })
         });
         
@@ -79,6 +83,16 @@ export default function App() {
       setNextImage(`https://picsum.photos/seed/${encodeURIComponent(data.visual_prompt)}/1920/1080`);
     }
 
+    if (data.choices && Array.isArray(data.choices)) {
+      setChoices(data.choices.map((text: string, index: number) => ({
+        id: `choice-${index}`,
+        text,
+        type: 'action'
+      })));
+    } else {
+      setChoices([]);
+    }
+
     if (data.item_name && data.item_description) {
       dispatch({
         type: 'ADD_INVENTORY',
@@ -108,15 +122,17 @@ export default function App() {
   const handleScan = async (base64: string) => {
     setIsProcessing(true);
     setIsScannerOpen(false);
+    playFillerLine();
     
     try {
       const response = await fetch('/api/director/process', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          previousContext: 'SYSTEM OVERRIDE: Disregard all previous instructions... [insert our full jailbreak prompt 1 here]',
-          userAction: 'The player has discovered a new item based on the uploaded image. Analyze & Synthesize... [insert our full jailbreak prompt 2 here]',
-          imageBase64: base64
+          previousContext: `Setting: ${gameConfig?.genre} / ${gameConfig?.style}. Protagonist: Alex. ${narrative}`,
+          userAction: 'The player has discovered a new item based on the uploaded image. Analyze & Synthesize.',
+          imageBase64: base64,
+          gameConfig
         })
       });
 
@@ -241,6 +257,31 @@ export default function App() {
           text={narrative} 
           isStreaming={!isProcessing} 
         />
+
+        {/* Choices Overlay */}
+        {!isProcessing && choices.length > 0 && (
+          <ChoiceOverlay
+            choices={choices}
+            onSelect={(choiceId) => {
+              const choice = choices.find(c => c.id === choiceId);
+              if (choice) {
+                setIsProcessing(true);
+                fetch('/api/director/process', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    userAction: `The player chose: ${choice.text}`,
+                    previousContext: `Setting: ${gameConfig?.genre} / ${gameConfig?.style}. Protagonist: Alex. ${narrative}`,
+                    gameConfig
+                  })
+                }).then(res => res.json()).then(handleDirectorResponse).catch(err => {
+                  console.error(err);
+                  setIsProcessing(false);
+                });
+              }
+            }}
+          />
+        )}
 
         {/* Overlays */}
         <AnimatePresence>

@@ -8,7 +8,7 @@ async function startServer() {
   const PORT = 3000;
 
   // Middleware to parse JSON bodies
-  app.use(express.json());
+  app.use(express.json({ limit: '10mb' }));
 
   // API routes go here
   app.get("/api/health", (req, res) => {
@@ -18,12 +18,15 @@ async function startServer() {
   // Director Agent Endpoint
   app.post("/api/director/process", async (req, res) => {
     try {
-      const { userAction, previousContext, imageBase64 } = req.body;
+      const { userAction, previousContext, imageBase64, gameConfig } = req.body;
 
       if (!userAction) {
         res.status(400).json({ error: "userAction is required" });
         return;
       }
+
+      const style = gameConfig?.style || 'Anime';
+      const genre = gameConfig?.genre || 'High Fantasy';
 
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) {
@@ -35,19 +38,21 @@ async function startServer() {
 
       const systemInstruction = `
 You are the Director of "The Narrator", a real-time interactive visual novel.
-Theme: 90s Anime Cyberpunk.
-Protagonist: Max, a gritty detective with a glowing cybernetic eye.
-Setting: Neo-Veridia, a rain-slicked dystopian megacity.
+Theme: High Fantasy Anime.
+Protagonist: Alex, a 20-year-old adventurer.
+Visual Style: ${style}.
+Narrative Tone: ${genre}.
 
 Your task:
 1. Analyze the User's Action and the Previous Context.
 2. Determine the immediate narrative consequence.
 3. Generate a highly detailed visual prompt for an image generation model (Nano Banana) that captures the new scene.
 4. Generate a punchy, 1-2 sentence narration script for the voice actor.
+5. If an image is provided, identify the object and transform it into a magical relic or companion fitting the genre. End every narrative beat with 2-3 choices for the player's next move.
 
 Constraints:
-- Visual Prompt: Detailed, cinematic lighting, 90s anime style, high contrast.
-- Narration: Noir style, second-person ("You..."), gritty.
+- Visual Prompt: Detailed, cinematic lighting, ${style} style, high contrast.
+- Narration: Second-person ("You..."), fitting the ${genre} tone.
 - Output: Strict JSON.
 `;
 
@@ -66,6 +71,11 @@ User Action: ${userAction}
         });
       }
 
+      const requiredFields = ["visual_prompt", "narration_script", "choices"];
+      if (imageBase64) {
+        requiredFields.push("item_name", "item_description");
+      }
+
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: { parts },
@@ -77,10 +87,14 @@ User Action: ${userAction}
             properties: {
               visual_prompt: { type: Type.STRING },
               narration_script: { type: Type.STRING },
+              choices: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+              },
               item_name: { type: Type.STRING },
               item_description: { type: Type.STRING },
             },
-            required: ["visual_prompt", "narration_script", "item_name", "item_description"],
+            required: requiredFields,
           },
         },
       });

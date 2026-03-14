@@ -74,6 +74,10 @@ export interface DirectorResponse {
 
   // State Updates (for UI sync)
   gameStateUpdate?: Partial<GameState>;
+
+  // Inventory System
+  item_name?: string;
+  item_description?: string;
 }
 
 export interface Choice {

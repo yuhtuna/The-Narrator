@@ -14,6 +14,7 @@ interface UseAudioSyncReturn {
   isSpeaking: boolean;
   startRecording: () => Promise<void>;
   playNarration: (text: string) => void;
+  playFillerLine: () => void;
   stopAllAudio: () => void;
 }
 
@@ -164,12 +165,29 @@ export function useAudioSync({ onRecordingComplete }: UseAudioSyncProps = {}): U
 
   }, []);
 
+  const playFillerLine = useCallback(() => {
+    const lines = [
+      "The threads of fate weave your choice...",
+      "Let us see what the manuscript reveals...",
+      "The ink dries on a new chapter...",
+      "A new path unfolds before you..."
+    ];
+    const randomLine = lines[Math.floor(Math.random() * lines.length)];
+    
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(randomLine);
+    utterance.rate = 0.9;
+    utterance.pitch = 0.9;
+    window.speechSynthesis.speak(utterance);
+  }, []);
+
   return {
     isRecording,
     isProcessing,
     isSpeaking,
     startRecording,
     playNarration,
+    playFillerLine,
     stopAllAudio
   };
 }

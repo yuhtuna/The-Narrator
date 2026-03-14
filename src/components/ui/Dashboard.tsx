@@ -142,7 +142,7 @@ export function Dashboard({ onStartGame }: DashboardProps) {
       <div className="fixed inset-0 z-0 overflow-hidden">
         <div 
           className="w-full h-full bg-cover bg-center opacity-40 animate-ken-burns"
-          style={{ backgroundImage: 'url(https://picsum.photos/seed/oldlibrary/1920/1080)' }}
+          style={{ backgroundImage: 'url(https://picsum.photos/seed/fantasyruins/1920/1080)' }}
         />
         <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/80 via-zinc-950/90 to-zinc-950" />
         <ManaParticles />
@@ -167,7 +167,7 @@ export function Dashboard({ onStartGame }: DashboardProps) {
           <section>
             <h2 className="text-2xl font-bold text-white mb-8 flex items-center gap-3 border-l-4 border-emerald-500 pl-4">
               <User className="w-6 h-6 text-emerald-400" /> 
-              <span className="tracking-wide uppercase">Select Protagonist</span>
+              <span className="tracking-wide uppercase">Establish Starting Loadout</span>
             </h2>
             
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
@@ -188,7 +188,7 @@ export function Dashboard({ onStartGame }: DashboardProps) {
                 <div className="z-10 flex flex-col items-center p-4 text-center">
                   <Upload className={`w-12 h-12 mb-4 transition-colors ${selectedCharacter === 'custom' ? 'text-emerald-400' : 'text-zinc-500 group-hover:text-zinc-300'}`} />
                   <span className={`font-medium text-sm uppercase tracking-wider ${selectedCharacter === 'custom' ? 'text-emerald-400' : 'text-zinc-500 group-hover:text-zinc-300'}`}>
-                    {customImage ? 'Image Uploaded' : 'Upload Custom'}
+                    {customImage ? 'Image Uploaded' : 'Scan Relic'}
                   </span>
                 </div>
                 {selectedCharacter === 'custom' && (
