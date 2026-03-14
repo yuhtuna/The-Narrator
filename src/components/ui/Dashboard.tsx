@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Upload, User, Play, Check } from 'lucide-react';
+import { motion } from 'motion/react';
 
 interface DashboardProps {
   onStartGame: (config: GameConfig) => void;
@@ -10,6 +11,46 @@ export interface GameConfig {
   style: string;
   genre: string;
   customImage?: File | null;
+}
+
+function ManaParticles() {
+  const particles = useMemo(() => {
+    return Array.from({ length: 25 }).map((_, i) => ({
+      id: i,
+      size: Math.random() * 8 + 4,
+      left: `${Math.random() * 100}%`,
+      duration: Math.random() * 10 + 10,
+      delay: Math.random() * 20,
+      opacity: Math.random() * 0.5 + 0.2,
+    }));
+  }, []);
+
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none z-10">
+      {particles.map((p) => (
+        <motion.div
+          key={p.id}
+          initial={{ y: '110vh', opacity: 0 }}
+          animate={{
+            y: '-10vh',
+            opacity: [0, p.opacity, 0],
+          }}
+          transition={{
+            duration: p.duration,
+            repeat: Infinity,
+            delay: p.delay,
+            ease: "linear"
+          }}
+          style={{
+            left: p.left,
+            width: p.size,
+            height: p.size,
+          }}
+          className="absolute rounded-full bg-emerald-400/40 blur-[2px] shadow-[0_0_10px_rgba(52,211,153,0.6)]"
+        />
+      ))}
+    </div>
+  );
 }
 
 function FallbackImage({ src, alt, className }: { src: string, alt: string, className?: string }) {
@@ -35,16 +76,16 @@ const CHARACTERS = [
 ];
 
 const STYLES = [
-  { id: 'stickman', name: 'Stickman', img: '/images/styles/stickman.jpg' },
-  { id: 'anime', name: 'Anime', img: '/images/styles/anime.jpg' },
-  { id: 'realistic', name: 'Realistic', img: '/images/styles/realistic.jpg' },
+  { id: 'pixel', name: 'Pixel', img: '/images/styles/img1.png' },
+  { id: 'anime', name: 'Anime', img: '/images/styles/anime.png' },
+  { id: 'sketch', name: 'Sketch', img: '/images/styles/sketch.png' },
 ];
 
 const GENRES = [
-  { id: 'action', name: 'Action', img: '/images/genres/action.jpg' },
-  { id: 'slice-of-life', name: 'Slice of Life', img: '/images/genres/slice-of-life.jpg' },
-  { id: 'dark-fantasy', name: 'Dark Fantasy', img: '/images/genres/dark-fantasy.jpg' },
-  { id: 'romance', name: 'Romance', img: '/images/genres/romance.jpg' },
+  { id: 'action', name: 'Action', img: '/images/genres/action.png' },
+  { id: 'slice-of-life', name: 'Slice of Life', img: '/images/genres/SOL.png' },
+  { id: 'dark-fantasy', name: 'Dark Fantasy', img: '/images/genres/DF.png' },
+  { id: 'romance', name: 'Romance', img: '/images/genres/RM.png' },
 ];
 
 export function Dashboard({ onStartGame }: DashboardProps) {
@@ -97,17 +138,14 @@ export function Dashboard({ onStartGame }: DashboardProps) {
   return (
     <div className="h-screen overflow-y-auto bg-zinc-950 text-white font-sans selection:bg-emerald-500/30 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-zinc-900 [&::-webkit-scrollbar-thumb]:bg-zinc-700 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-zinc-500">
       
-      {/* Cinematic Video Background */}
-      <div className="fixed inset-0 z-0">
-        <video 
-          autoPlay 
-          loop 
-          muted 
-          playsInline 
-          className="w-full h-full object-cover opacity-40"
-          src="https://storage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4"
+      {/* Cinematic Background Layer */}
+      <div className="fixed inset-0 z-0 overflow-hidden">
+        <div 
+          className="w-full h-full bg-cover bg-center opacity-40 animate-ken-burns"
+          style={{ backgroundImage: 'url(https://picsum.photos/seed/oldlibrary/1920/1080)' }}
         />
         <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/80 via-zinc-950/90 to-zinc-950" />
+        <ManaParticles />
       </div>
 
       {/* Main Content Container */}
@@ -119,7 +157,7 @@ export function Dashboard({ onStartGame }: DashboardProps) {
             The Narrator
           </h1>
           <p className="mt-6 text-zinc-400 max-w-2xl text-lg md:text-xl font-light leading-relaxed">
-            Initialize your simulation. Select your avatar, visual style, and narrative genre to begin the sequence.
+            Open your manuscript. Define your protagonist, choose your visual prose, and set the narrative tone to begin writing your masterpiece.
           </p>
         </header>
 
@@ -198,7 +236,7 @@ export function Dashboard({ onStartGame }: DashboardProps) {
           {/* Section 2: Art Style */}
           <section>
             <h2 className="text-2xl font-bold text-white mb-8 flex items-center gap-3 border-l-4 border-emerald-500 pl-4">
-              <span className="tracking-wide uppercase">Visual Style</span>
+              <span className="tracking-wide uppercase">Art Style</span>
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
               {STYLES.map((style) => (
@@ -276,7 +314,7 @@ export function Dashboard({ onStartGame }: DashboardProps) {
               : 'bg-zinc-800/50 text-zinc-600 cursor-not-allowed scale-95'
           }`}
         >
-          <span>Start Game</span>
+          <span>Begin Story</span>
           {isReady && <Play className="w-6 h-6 fill-current animate-pulse" />}
         </button>
       </div>

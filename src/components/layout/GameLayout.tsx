@@ -7,10 +7,8 @@ interface GameLayoutProps {
 
 export function GameLayout({ children }: GameLayoutProps) {
   return (
-    <GameProvider>
-      <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-emerald-500/30">
-        {children}
-      </div>
-    </GameProvider>
+    <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-emerald-500/30">
+      {children}
+    </div>
   );
 }

@@ -18,7 +18,7 @@ async function startServer() {
   // Director Agent Endpoint
   app.post("/api/director/process", async (req, res) => {
     try {
-      const { userAction, previousContext } = req.body;
+      const { userAction, previousContext, imageBase64 } = req.body;
 
       if (!userAction) {
         res.status(400).json({ error: "userAction is required" });
@@ -51,14 +51,24 @@ Constraints:
 - Output: Strict JSON.
 `;
 
-      const prompt = `
+      const promptText = `
 Previous Context: ${previousContext || "The story begins."}
 User Action: ${userAction}
 `;
 
+      const parts: any[] = [{ text: promptText }];
+      if (imageBase64) {
+        parts.push({
+          inlineData: {
+            data: imageBase64,
+            mimeType: "image/jpeg",
+          },
+        });
+      }
+
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: prompt,
+        contents: { parts },
         config: {
           systemInstruction: systemInstruction,
           responseMimeType: "application/json",
@@ -67,8 +77,10 @@ User Action: ${userAction}
             properties: {
               visual_prompt: { type: Type.STRING },
               narration_script: { type: Type.STRING },
+              item_name: { type: Type.STRING },
+              item_description: { type: Type.STRING },
             },
-            required: ["visual_prompt", "narration_script"],
+            required: ["visual_prompt", "narration_script", "item_name", "item_description"],
           },
         },
       });

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
-import { GameState, DirectorResponse } from '../../types/director';
+import { GameState, DirectorResponse, InventoryItem } from '../types/director';
 
 // Initial State
 const initialState: GameState = {
@@ -15,7 +15,7 @@ const initialState: GameState = {
 // Actions
 type Action =
   | { type: 'UPDATE_STATE'; payload: Partial<GameState> }
-  | { type: 'ADD_INVENTORY'; payload: any } // Replace 'any' with InventoryItem
+  | { type: 'ADD_INVENTORY'; payload: InventoryItem }
   | { type: 'SET_SCENE'; payload: string };
 
 // Reducer
