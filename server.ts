@@ -118,32 +118,20 @@ User Action: ${userAction}
 
       if (jsonResponse.visual_prompt) {
         try {
-          const imageResponse = await ai.models.generateContent({
-            model: 'gemini-3.1-flash-image-preview',
-            contents: {
-              parts: [
-                {
-                  text: jsonResponse.visual_prompt,
-                },
-              ],
-            },
+          const imageResponse = await ai.models.generateImages({
+            model: 'imagen-3.0-generate-002', // Standardize to the official image model
+            prompt: jsonResponse.visual_prompt,
             config: {
-              imageConfig: {
-                aspectRatio: "16:9",
-                imageSize: "1K"
-              }
+              numberOfImages: 1,
+              outputMimeType: 'image/jpeg',
+              aspectRatio: '16:9'
             }
           });
 
-          for (const part of imageResponse.candidates?.[0]?.content?.parts || []) {
-            if (part.inlineData) {
-              const base64EncodeString = part.inlineData.data;
-              jsonResponse.imageUrl = `data:image/jpeg;base64,${base64EncodeString}`;
-              break;
-            }
-          }
+          const base64EncodeString = imageResponse.generatedImages[0].image.imageBytes;
+          jsonResponse.imageUrl = `data:image/jpeg;base64,${base64EncodeString}`;
         } catch (imageError) {
-          console.error("Image generation error:", imageError);
+          console.error("Image generation failed. Ensure your API key has access to Imagen 3.", imageError);
           // Fallback if image generation fails
           jsonResponse.imageUrl = `https://picsum.photos/seed/${encodeURIComponent(jsonResponse.visual_prompt)}/1920/1080`;
         }

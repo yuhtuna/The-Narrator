@@ -145,7 +145,7 @@ export function Dashboard({ onStartGame }: DashboardProps) {
       <div className="fixed inset-0 z-0 overflow-hidden">
         <div 
           className="w-full h-full bg-cover bg-center opacity-40 animate-ken-burns"
-          style={{ backgroundImage: 'url(https://picsum.photos/seed/fantasyruins/1920/1080)' }}
+          style={{ backgroundImage: 'url(https://images.unsplash.com/photo-1481627834876-b7833e8f5570?q=80&w=1920&auto=format&fit=crop)' }}
         />
         <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/80 via-zinc-950/90 to-zinc-950" />
         <ManaParticles />

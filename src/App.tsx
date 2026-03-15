@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { GameLayout } from './components/layout/GameLayout';
 import { DialogueBox } from './components/ui/DialogueBox';
 import { Dashboard, GameConfig } from './components/ui/Dashboard';
@@ -31,6 +31,7 @@ export default function App() {
   const [narrative, setNarrative] = useState("The neon rain slicks the pavement. The city awaits your command.");
   const [alexExpression, setAlexExpression] = useState<'neutral' | 'surprised' | 'serious' | 'thinking'>('neutral');
   const [choices, setChoices] = useState<Choice[]>([]);
+  const [inputText, setInputText] = useState('');
 
   // Audio Sync Hook
   const { isRecording, startRecording, playNarration, playFillerLine } = useAudioSync({
@@ -111,7 +112,35 @@ export default function App() {
         }
       });
     }
+    
+    if (!data.imageUrl) {
+      setIsProcessing(false);
+    }
   };
+
+  useEffect(() => {
+    if (gameState === 'playing' && narrative === "The neon rain slicks the pavement. The city awaits your command.") {
+      setIsProcessing(true);
+      setNarrative("Initializing world and summoning protagonist...");
+      
+      fetch('/api/director/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userAction: 'The player has entered the world. Introduce the scene and their character.',
+          previousContext: `Setting: ${gameConfig?.genre} / ${gameConfig?.style}.`,
+          imageBase64: userReferenceImage,
+          gameConfig
+        })
+      })
+      .then(res => res.json())
+      .then(handleDirectorResponse)
+      .catch(error => {
+        console.error("API Error", error);
+        setIsProcessing(false);
+      });
+    }
+  }, [gameState, narrative, gameConfig, userReferenceImage]);
 
   const handleStartGame = async (config: GameConfig) => {
     if (config.customImage) {
@@ -156,6 +185,35 @@ export default function App() {
     if (nextImage) {
       setCurrentImage(nextImage);
       setNextImage(null);
+      setIsProcessing(false);
+    }
+  };
+
+  const handleTextSubmit = async () => {
+    if (!inputText.trim()) return;
+    
+    playFillerLine();
+    setIsProcessing(true);
+    
+    const actionText = inputText;
+    setInputText('');
+    
+    try {
+      const response = await fetch('/api/director/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userAction: actionText,
+          previousContext: `Setting: ${gameConfig?.genre} / ${gameConfig?.style}. ${narrative}`,
+          imageBase64: userReferenceImage,
+          gameConfig
+        })
+      });
+      
+      const data = await response.json();
+      handleDirectorResponse(data);
+    } catch (error) {
+      console.error("API Error", error);
       setIsProcessing(false);
     }
   };
@@ -239,12 +297,21 @@ export default function App() {
           </div>
         </div>
 
-        {/* Microphone Interaction */}
-        <div className="absolute bottom-40 left-0 right-0 flex justify-center z-40">
+        {/* Unified Input Row */}
+        <div className="absolute bottom-10 left-0 right-0 max-w-2xl mx-auto flex items-center gap-4 z-40 px-6">
+          <input
+            type="text"
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleTextSubmit()}
+            disabled={isProcessing || isRecording}
+            placeholder="Type your action..."
+            className="flex-1 bg-black/60 border border-emerald-500/30 text-white placeholder:text-emerald-500/50 rounded-full px-6 py-4 backdrop-blur-md outline-none focus:border-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed"
+          />
           <button
             onClick={startRecording}
             disabled={isRecording || isProcessing}
-            className={`group relative flex items-center gap-3 px-8 py-4 rounded-full font-bold tracking-widest uppercase transition-all duration-300 ${
+            className={`group relative flex items-center justify-center p-4 rounded-full transition-all duration-300 ${
               isRecording 
                 ? 'bg-red-600/80 text-white shadow-[0_0_30px_rgba(220,38,38,0.8)] scale-105 animate-pulse' 
                 : isProcessing
@@ -253,9 +320,6 @@ export default function App() {
             }`}
           >
             <Mic className={`w-6 h-6 ${isRecording ? 'animate-bounce' : ''}`} />
-            <span>
-              {isRecording ? 'Recording...' : isProcessing ? 'Processing...' : 'Hold to Speak (Max 4s)'}
-            </span>
           </button>
         </div>
 
