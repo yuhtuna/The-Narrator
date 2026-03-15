@@ -73,7 +73,7 @@ function FallbackImage({ src, alt, className }: { src: string, alt: string, clas
 }
 
 const CHARACTERS = [
-  { id: 'default', name: 'Alex (Default)', img: '/images/characters/alex.jpg' },
+  { id: 'default', name: 'Alex (Default)', img: '/images/characters/alex.png' },
 ];
 
 const STYLES = [
