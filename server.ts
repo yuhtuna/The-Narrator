@@ -29,11 +29,13 @@ async function startServer() {
       const genre = gameConfig?.genre || 'High Fantasy';
       const customName = gameConfig?.customName;
 
-      const apiKey = process.env.GEMINI_API_KEY;
+      let apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) {
         res.status(500).json({ error: "GEMINI_API_KEY is not set" });
         return;
       }
+      // Remove any accidental quotes from the API key
+      apiKey = apiKey.replace(/^["']|["']$/g, '').trim();
 
       const ai = new GoogleGenAI({ apiKey });
 
@@ -119,7 +121,7 @@ User Action: ${userAction}
       if (jsonResponse.visual_prompt) {
         try {
           const imageResponse = await ai.models.generateImages({
-            model: 'imagen-3.0-generate-002', // Standardize to the official image model
+            model: 'gemini-2.5-flash-image',
             prompt: jsonResponse.visual_prompt,
             config: {
               numberOfImages: 1,
@@ -131,7 +133,7 @@ User Action: ${userAction}
           const base64EncodeString = imageResponse.generatedImages[0].image.imageBytes;
           jsonResponse.imageUrl = `data:image/jpeg;base64,${base64EncodeString}`;
         } catch (imageError) {
-          console.error("Image generation failed. Ensure your API key has access to Imagen 3.", imageError);
+          console.error("Gemini 2.5 Flash Image Error:", imageError);
           // Fallback if image generation fails
           jsonResponse.imageUrl = `https://picsum.photos/seed/${encodeURIComponent(jsonResponse.visual_prompt)}/1920/1080`;
         }
