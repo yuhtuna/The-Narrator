@@ -39,23 +39,33 @@ export default function App() {
       setIsProcessing(true);
       
       try {
-        // In a real implementation, we'd convert audio to text first
-        // For now, we'll simulate a director call
-        const response = await fetch('/api/director/process', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userAction: "The player speaks into the comms.",
-            previousContext: `Setting: ${gameConfig?.genre} / ${gameConfig?.style}. Protagonist: Alex. ${narrative}`,
-            imageBase64: userReferenceImage,
-            gameConfig
-          })
-        });
-        
-        const data = await response.json();
-        handleDirectorResponse(data);
+        const reader = new FileReader();
+        reader.readAsDataURL(audioBlob);
+        reader.onloadend = async () => {
+          const base64data = (reader.result as string).split(',')[1];
+          
+          try {
+            const response = await fetch('/api/director/process', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                userAction: "The player has spoken. Listen to the provided audio to determine their action.",
+                previousContext: `Setting: ${gameConfig?.genre} / ${gameConfig?.style}. ${narrative}`,
+                imageBase64: userReferenceImage,
+                audioBase64: base64data,
+                gameConfig
+              })
+            });
+            
+            const data = await response.json();
+            handleDirectorResponse(data);
+          } catch (error) {
+            console.error("API Error", error);
+            setIsProcessing(false);
+          }
+        };
       } catch (error) {
-        console.error("API Error", error);
+        console.error("Audio Processing Error", error);
         setIsProcessing(false);
       }
     }
@@ -77,10 +87,8 @@ export default function App() {
     setNarrative(script);
     playNarration(script);
 
-    if (data.visual_prompt) {
-      // In a real app, we'd generate an image from the prompt
-      // For now, we'll just update the background with a new seed
-      setNextImage(`https://picsum.photos/seed/${encodeURIComponent(data.visual_prompt)}/1920/1080`);
+    if (data.imageUrl) {
+      setNextImage(data.imageUrl);
     }
 
     if (data.choices && Array.isArray(data.choices)) {
@@ -129,7 +137,7 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          previousContext: `Setting: ${gameConfig?.genre} / ${gameConfig?.style}. Protagonist: Alex. ${narrative}`,
+          previousContext: `Setting: ${gameConfig?.genre} / ${gameConfig?.style}. ${narrative}`,
           userAction: 'The player has discovered a new item based on the uploaded image. Analyze & Synthesize.',
           imageBase64: base64,
           gameConfig
@@ -271,7 +279,7 @@ export default function App() {
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                     userAction: `The player chose: ${choice.text}`,
-                    previousContext: `Setting: ${gameConfig?.genre} / ${gameConfig?.style}. Protagonist: Alex. ${narrative}`,
+                    previousContext: `Setting: ${gameConfig?.genre} / ${gameConfig?.style}. ${narrative}`,
                     gameConfig
                   })
                 }).then(res => res.json()).then(handleDirectorResponse).catch(err => {

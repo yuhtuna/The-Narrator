@@ -18,7 +18,7 @@ async function startServer() {
   // Director Agent Endpoint
   app.post("/api/director/process", async (req, res) => {
     try {
-      const { userAction, previousContext, imageBase64, gameConfig } = req.body;
+      const { userAction, previousContext, imageBase64, audioBase64, gameConfig } = req.body;
 
       if (!userAction) {
         res.status(400).json({ error: "userAction is required" });
@@ -27,6 +27,7 @@ async function startServer() {
 
       const style = gameConfig?.style || 'Anime';
       const genre = gameConfig?.genre || 'High Fantasy';
+      const customName = gameConfig?.customName;
 
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) {
@@ -39,7 +40,7 @@ async function startServer() {
       const systemInstruction = `
 You are the Director of "The Narrator", a real-time interactive visual novel.
 Theme: High Fantasy Anime.
-Protagonist: Alex, a 20-year-old adventurer.
+Protagonist Constraints: If an image is provided, YOU MUST ANALYZE IT. The primary subject of that image is the Main Character. Their name is ${customName || "a fitting fantasy name"}. Describe them adapting to the requested Visual Style (${style}). If NO image is provided, the Main Character is Alex, a 20-year-old adventurer.
 Visual Style: ${style}.
 Narrative Tone: ${genre}.
 
@@ -49,10 +50,11 @@ Your task:
 3. Generate a highly detailed visual prompt for an image generation model (Nano Banana) that captures the new scene.
 4. Generate a punchy, 1-2 sentence narration script for the voice actor.
 5. If an image is provided, identify the object and transform it into a magical relic or companion fitting the genre. End every narrative beat with 2-3 choices for the player's next move.
+6. If audio is provided, carefully transcribe the user's spoken intent and use it as their action for the current turn.
 
 Constraints:
-- Visual Prompt: Detailed, cinematic lighting, ${style} style, high contrast.
-- Narration: Second-person ("You..."), fitting the ${genre} tone.
+- Visual Prompt: Detailed, cinematic lighting, ${style} style, high contrast. Every visual_prompt MUST feature this protagonist prominently, rendered strictly in the ${style} art style.
+- Narration: Second-person ("You..."), directly addressing the user as this protagonist, fitting the ${genre} tone.
 - Output: Strict JSON.
 `;
 
@@ -67,6 +69,14 @@ User Action: ${userAction}
           inlineData: {
             data: imageBase64,
             mimeType: "image/jpeg",
+          },
+        });
+      }
+      if (audioBase64) {
+        parts.push({
+          inlineData: {
+            data: audioBase64,
+            mimeType: "audio/webm",
           },
         });
       }
@@ -105,6 +115,40 @@ User Action: ${userAction}
       }
 
       const jsonResponse = JSON.parse(responseText);
+
+      if (jsonResponse.visual_prompt) {
+        try {
+          const imageResponse = await ai.models.generateContent({
+            model: 'gemini-3.1-flash-image-preview',
+            contents: {
+              parts: [
+                {
+                  text: jsonResponse.visual_prompt,
+                },
+              ],
+            },
+            config: {
+              imageConfig: {
+                aspectRatio: "16:9",
+                imageSize: "1K"
+              }
+            }
+          });
+
+          for (const part of imageResponse.candidates?.[0]?.content?.parts || []) {
+            if (part.inlineData) {
+              const base64EncodeString = part.inlineData.data;
+              jsonResponse.imageUrl = `data:image/jpeg;base64,${base64EncodeString}`;
+              break;
+            }
+          }
+        } catch (imageError) {
+          console.error("Image generation error:", imageError);
+          // Fallback if image generation fails
+          jsonResponse.imageUrl = `https://picsum.photos/seed/${encodeURIComponent(jsonResponse.visual_prompt)}/1920/1080`;
+        }
+      }
+
       res.json(jsonResponse);
 
     } catch (error) {

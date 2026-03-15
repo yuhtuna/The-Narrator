@@ -11,6 +11,7 @@ export interface GameConfig {
   style: string;
   genre: string;
   customImage?: File | null;
+  customName?: string;
 }
 
 function ManaParticles() {
@@ -93,6 +94,7 @@ export function Dashboard({ onStartGame }: DashboardProps) {
   const [selectedStyle, setSelectedStyle] = useState<string | null>(null);
   const [selectedGenre, setSelectedGenre] = useState<string | null>(null);
   const [customImage, setCustomImage] = useState<File | null>(null);
+  const [customName, setCustomName] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
 
   const handleStart = () => {
@@ -104,7 +106,8 @@ export function Dashboard({ onStartGame }: DashboardProps) {
           character: selectedCharacter,
           style: selectedStyle,
           genre: selectedGenre,
-          customImage
+          customImage,
+          customName: selectedCharacter === 'custom' && customName.trim() !== '' ? customName.trim() : undefined
         });
       }, 2000);
     }
@@ -157,17 +160,17 @@ export function Dashboard({ onStartGame }: DashboardProps) {
             The Narrator
           </h1>
           <p className="mt-6 text-zinc-400 max-w-2xl text-lg md:text-xl font-light leading-relaxed">
-            Open your manuscript. Define your protagonist, choose your visual prose, and set the narrative tone to begin writing your masterpiece.
+            Open your manuscript. Define your character, choose your visual prose, and set the narrative tone to begin writing your masterpiece.
           </p>
         </header>
 
         <div className="space-y-20">
         
-          {/* Section 1: Protagonist */}
+          {/* Section 1: Character */}
           <section>
             <h2 className="text-2xl font-bold text-white mb-8 flex items-center gap-3 border-l-4 border-emerald-500 pl-4">
               <User className="w-6 h-6 text-emerald-400" /> 
-              <span className="tracking-wide uppercase">Establish Starting Loadout</span>
+              <span className="tracking-wide uppercase">Choose Your Character</span>
             </h2>
             
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
@@ -188,8 +191,11 @@ export function Dashboard({ onStartGame }: DashboardProps) {
                 <div className="z-10 flex flex-col items-center p-4 text-center">
                   <Upload className={`w-12 h-12 mb-4 transition-colors ${selectedCharacter === 'custom' ? 'text-emerald-400' : 'text-zinc-500 group-hover:text-zinc-300'}`} />
                   <span className={`font-medium text-sm uppercase tracking-wider ${selectedCharacter === 'custom' ? 'text-emerald-400' : 'text-zinc-500 group-hover:text-zinc-300'}`}>
-                    {customImage ? 'Image Uploaded' : 'Scan Relic'}
+                    {customImage ? 'Image Uploaded' : 'Scan Character'}
                   </span>
+                  {!customImage && (
+                    <span className="text-xs text-zinc-500 mt-2">Upload a photo, drawing, or object to be the character.</span>
+                  )}
                 </div>
                 {selectedCharacter === 'custom' && (
                   <div className="absolute top-3 right-3 bg-emerald-500 rounded-full p-1.5 z-20 shadow-lg">
@@ -204,13 +210,28 @@ export function Dashboard({ onStartGame }: DashboardProps) {
                      className="absolute inset-0 w-full h-full object-cover opacity-40"
                    />
                 )}
+                {selectedCharacter === 'custom' && (
+                  <div className="absolute bottom-4 left-4 right-4 z-30">
+                    <input
+                      type="text"
+                      placeholder="Enter Character Name..."
+                      value={customName}
+                      onChange={(e) => setCustomName(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-full bg-zinc-950/90 border border-emerald-500/50 rounded-md px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400 backdrop-blur-md transition-all"
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Default Characters */}
               {CHARACTERS.map((char) => (
                 <div 
                   key={char.id}
-                  onClick={() => setSelectedCharacter(char.id)}
+                  onClick={() => {
+                    setSelectedCharacter(char.id);
+                    setCustomImage(null);
+                  }}
                   className={`aspect-[2/3] relative group cursor-pointer rounded-2xl overflow-hidden transition-all duration-500 ${
                     selectedCharacter === char.id 
                       ? 'ring-4 ring-emerald-500 shadow-[0_0_40px_rgba(16,185,129,0.4)] scale-[1.02] z-10' 
