@@ -47,13 +47,16 @@ Protagonist Constraints: If an image is provided, YOU MUST ANALYZE IT. The prima
 Visual Style: ${style}.
 Narrative Tone: ${genre}.
 
+You are the Narrator, the global router of this world. The protagonist is ${customName || "Alex"}. There can be many other NPCs and enemies.
+
 Your task:
 1. Analyze the User's Action and the Previous Context.
 2. Determine the immediate narrative consequence.
 3. Generate a highly detailed visual prompt for an image generation model (Nano Banana) that captures the new scene.
 4. Generate a punchy, 1-2 sentence narration script for the voice actor.
-5. If an image is provided, identify the object and transform it into a magical relic or companion fitting the genre. End every narrative beat with 2-3 choices for the player's next move.
+5. If an image is provided, identify the object and transform it into a magical relic or companion fitting the genre.
 6. If audio is provided, carefully transcribe the user's spoken intent and use it as their action for the current turn.
+7. When writing the narration_script, determine who is speaking. Output the name of the speaker in the speaker_name field (e.g., "Narrator", "${customName || "Alex"}", "The Goblin King").
 
 Constraints:
 - Visual Prompt: Detailed, cinematic lighting, ${style} style, high contrast. Every visual_prompt MUST feature this protagonist prominently, rendered strictly in the ${style} art style.
@@ -84,7 +87,7 @@ User Action: ${userAction}
         });
       }
 
-      const requiredFields = ["visual_prompt", "narration_script", "choices"];
+      const requiredFields = ["visual_prompt", "narration_script", "speaker_name"];
       if (imageBase64) {
         requiredFields.push("item_name", "item_description");
       }
@@ -100,10 +103,7 @@ User Action: ${userAction}
             properties: {
               visual_prompt: { type: Type.STRING },
               narration_script: { type: Type.STRING },
-              choices: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-              },
+              speaker_name: { type: Type.STRING },
               item_name: { type: Type.STRING },
               item_description: { type: Type.STRING },
             },
@@ -131,9 +131,7 @@ User Action: ${userAction}
               ],
             }],
             config: {
-              imageConfig: {
-                aspectRatio: "16:9"
-              }
+              // Let the model use its default resolution
             },
           });
 

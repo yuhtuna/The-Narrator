@@ -31,7 +31,7 @@ export function DialogueBox({ speaker, text, isStreaming }: DialogueBoxProps) {
     <motion.div
       initial={{ y: 100, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
-      className="absolute bottom-8 left-0 right-0 mx-auto w-full max-w-4xl px-6 z-30"
+      className="relative w-full max-w-4xl mx-auto z-30 mb-6"
     >
       <div className="bg-black/80 backdrop-blur-md border border-white/10 rounded-xl p-6 shadow-2xl">
         {speaker && (

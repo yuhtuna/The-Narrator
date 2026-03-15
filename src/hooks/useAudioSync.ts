@@ -13,7 +13,7 @@ interface UseAudioSyncReturn {
   isProcessing: boolean;
   isSpeaking: boolean;
   startRecording: () => Promise<void>;
-  playNarration: (text: string) => void;
+  playNarration: (text: string, speaker?: string) => void;
   playFillerLine: () => void;
   stopAllAudio: () => void;
 }
@@ -111,7 +111,7 @@ export function useAudioSync({ onRecordingComplete }: UseAudioSyncProps = {}): U
   /**
    * Handles the Voice Handoff: Stops suspense, plays impact, speaks text.
    */
-  const playNarration = useCallback((text: string) => {
+  const playNarration = useCallback((text: string, speaker: string = 'Narrator') => {
     setIsProcessing(false);
     setIsSpeaking(true);
 
@@ -125,8 +125,13 @@ export function useAudioSync({ onRecordingComplete }: UseAudioSyncProps = {}): U
       const preferredVoice = voices.find(v => v.name.includes('Google US English') || v.name.includes('Microsoft David'));
       if (preferredVoice) utterance.voice = preferredVoice;
 
-      utterance.rate = 1.0; // Normal speed
-      utterance.pitch = 0.9; // Slightly deeper for noir feel
+      if (speaker.toLowerCase() === 'narrator') {
+        utterance.pitch = 0.5;
+        utterance.rate = 0.95;
+      } else {
+        utterance.pitch = 1.0;
+        utterance.rate = 1.0;
+      }
 
       utterance.onend = () => {
         setIsSpeaking(false);

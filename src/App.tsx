@@ -2,13 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { GameLayout } from './components/layout/GameLayout';
 import { DialogueBox } from './components/ui/DialogueBox';
 import { Dashboard, GameConfig } from './components/ui/Dashboard';
-import { ChoiceOverlay } from './components/ui/ChoiceOverlay';
 import { useAudioSync } from './hooks/useAudioSync';
 import { Mic } from 'lucide-react';
 import { processImageForAPI } from './utils/imageUtils';
 import { AnimatePresence, motion } from 'motion/react';
 import { useGame } from './context/GameContext';
-import { Choice } from './types/director';
 
 export default function App() {
   const { state, dispatch } = useGame();
@@ -26,7 +24,7 @@ export default function App() {
   // Narrative State
   const [narrative, setNarrative] = useState("The neon rain slicks the pavement. The city awaits your command.");
   const [alexExpression, setAlexExpression] = useState<'neutral' | 'surprised' | 'serious' | 'thinking'>('neutral');
-  const [choices, setChoices] = useState<Choice[]>([]);
+  const [speaker, setSpeaker] = useState('Narrator');
   const [inputText, setInputText] = useState('');
 
   // Audio Sync Hook
@@ -82,20 +80,12 @@ export default function App() {
     }
 
     setNarrative(script);
-    playNarration(script);
+    const currentSpeaker = data.speaker_name || 'Narrator';
+    setSpeaker(currentSpeaker);
+    playNarration(script, currentSpeaker);
 
     if (data.imageUrl) {
       setNextImage(data.imageUrl);
-    }
-
-    if (data.choices && Array.isArray(data.choices)) {
-      setChoices(data.choices.map((text: string, index: number) => ({
-        id: `choice-${index}`,
-        text,
-        type: 'action'
-      })));
-    } else {
-      setChoices([]);
     }
 
     if (!data.imageUrl) {
@@ -235,63 +225,40 @@ export default function App() {
           </motion.div>
         </AnimatePresence>
 
-        {/* Unified Input Row */}
-        <div className="absolute bottom-10 left-0 right-0 max-w-2xl mx-auto flex items-center gap-4 z-40 px-6">
-          <input
-            type="text"
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleTextSubmit()}
-            disabled={isProcessing || isRecording}
-            placeholder="Type your action..."
-            className="flex-1 bg-black/60 border border-emerald-500/30 text-white placeholder:text-emerald-500/50 rounded-full px-6 py-4 backdrop-blur-md outline-none focus:border-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed"
+        <div className="absolute bottom-10 left-0 right-0 px-6 flex flex-col items-center justify-end z-40 pointer-events-none">
+          {/* Narrative Interface */}
+          <DialogueBox 
+            speaker={speaker}
+            text={narrative} 
+            isStreaming={!isProcessing} 
           />
-          <button
-            onClick={startRecording}
-            disabled={isRecording || isProcessing}
-            className={`group relative flex items-center justify-center p-4 rounded-full transition-all duration-300 ${
-              isRecording 
-                ? 'bg-red-600/80 text-white shadow-[0_0_30px_rgba(220,38,38,0.8)] scale-105 animate-pulse' 
-                : isProcessing
-                ? 'bg-zinc-800/50 text-zinc-500 cursor-not-allowed'
-                : 'bg-black/60 hover:bg-emerald-900/60 text-emerald-400 border border-emerald-500/30 hover:border-emerald-400 backdrop-blur-md hover:shadow-[0_0_20px_rgba(52,211,153,0.4)]'
-            }`}
-          >
-            <Mic className={`w-6 h-6 ${isRecording ? 'animate-bounce' : ''}`} />
-          </button>
+
+          {/* Unified Input Row */}
+          <div className="w-full max-w-2xl mx-auto flex items-center gap-4 pointer-events-auto">
+            <input
+              type="text"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleTextSubmit()}
+              disabled={isProcessing || isRecording}
+              placeholder="Type your action..."
+              className="flex-1 bg-black/60 border border-emerald-500/30 text-white placeholder:text-emerald-500/50 rounded-full px-6 py-4 backdrop-blur-md outline-none focus:border-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed"
+            />
+            <button
+              onClick={startRecording}
+              disabled={isRecording || isProcessing}
+              className={`group relative flex items-center justify-center p-4 rounded-full transition-all duration-300 ${
+                isRecording 
+                  ? 'bg-red-600/80 text-white shadow-[0_0_30px_rgba(220,38,38,0.8)] scale-105 animate-pulse' 
+                  : isProcessing
+                  ? 'bg-zinc-800/50 text-zinc-500 cursor-not-allowed'
+                  : 'bg-black/60 hover:bg-emerald-900/60 text-emerald-400 border border-emerald-500/30 hover:border-emerald-400 backdrop-blur-md hover:shadow-[0_0_20px_rgba(52,211,153,0.4)]'
+              }`}
+            >
+              <Mic className={`w-6 h-6 ${isRecording ? 'animate-bounce' : ''}`} />
+            </button>
+          </div>
         </div>
-
-        {/* Narrative Interface */}
-        <DialogueBox 
-          speaker="Alex"
-          text={narrative} 
-          isStreaming={!isProcessing} 
-        />
-
-        {/* Choices Overlay */}
-        {!isProcessing && choices.length > 0 && (
-          <ChoiceOverlay
-            choices={choices}
-            onSelect={(choiceId) => {
-              const choice = choices.find(c => c.id === choiceId);
-              if (choice) {
-                setIsProcessing(true);
-                fetch('/api/director/process', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    userAction: `The player chose: ${choice.text}`,
-                    previousContext: `Setting: ${gameConfig?.genre} / ${gameConfig?.style}. ${narrative}`,
-                    gameConfig
-                  })
-                }).then(res => res.json()).then(handleDirectorResponse).catch(err => {
-                  console.error(err);
-                  setIsProcessing(false);
-                });
-              }
-            }}
-          />
-        )}
 
         {/* Overlays */}
         <AnimatePresence>
