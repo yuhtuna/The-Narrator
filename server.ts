@@ -34,6 +34,7 @@ async function startServer() {
         res.status(500).json({ error: "GEMINI_API_KEY is not set" });
         return;
       }
+      
       // Remove any accidental quotes from the API key
       apiKey = apiKey.replace(/^["']|["']$/g, '').trim();
 
@@ -90,7 +91,7 @@ User Action: ${userAction}
 
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: { parts },
+        contents: [{ parts }],
         config: {
           systemInstruction: systemInstruction,
           responseMimeType: "application/json",
@@ -120,18 +121,35 @@ User Action: ${userAction}
 
       if (jsonResponse.visual_prompt) {
         try {
-          const imageResponse = await ai.models.generateImages({
+          const imageResponse = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image',
-            prompt: jsonResponse.visual_prompt,
+            contents: [{
+              parts: [
+                {
+                  text: jsonResponse.visual_prompt,
+                },
+              ],
+            }],
             config: {
-              numberOfImages: 1,
-              outputMimeType: 'image/jpeg',
-              aspectRatio: '16:9'
-            }
+              imageConfig: {
+                aspectRatio: "16:9"
+              }
+            },
           });
 
-          const base64EncodeString = imageResponse.generatedImages[0].image.imageBytes;
-          jsonResponse.imageUrl = `data:image/jpeg;base64,${base64EncodeString}`;
+          let base64EncodeString = "";
+          for (const part of imageResponse.candidates?.[0]?.content?.parts || []) {
+            if (part.inlineData) {
+              base64EncodeString = part.inlineData.data;
+              break;
+            }
+          }
+
+          if (base64EncodeString) {
+            jsonResponse.imageUrl = `data:image/jpeg;base64,${base64EncodeString}`;
+          } else {
+            throw new Error("No image data in response");
+          }
         } catch (imageError) {
           console.error("Gemini 2.5 Flash Image Error:", imageError);
           // Fallback if image generation fails

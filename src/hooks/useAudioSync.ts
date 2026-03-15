@@ -31,21 +31,10 @@ export function useAudioSync({ onRecordingComplete }: UseAudioSyncProps = {}): U
   // Refs for audio elements and recorder to persist across renders
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const heartbeatAudioRef = useRef<HTMLAudioElement | null>(null);
-  const thudAudioRef = useRef<HTMLAudioElement | null>(null);
   const recordingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Initialize audio elements on mount
   useEffect(() => {
-    // Suspense Loop
-    heartbeatAudioRef.current = new Audio('/sounds/heartbeat.mp3');
-    heartbeatAudioRef.current.loop = true;
-    heartbeatAudioRef.current.volume = 0.5; // Adjust volume as needed
-
-    // Impact Sound
-    thudAudioRef.current = new Audio('/sounds/thud.mp3');
-    thudAudioRef.current.volume = 0.8;
-
     // Cleanup on unmount
     return () => {
       stopAllAudio();
@@ -56,14 +45,6 @@ export function useAudioSync({ onRecordingComplete }: UseAudioSyncProps = {}): U
    * Stops all currently playing audio and speech synthesis.
    */
   const stopAllAudio = useCallback(() => {
-    if (heartbeatAudioRef.current) {
-      heartbeatAudioRef.current.pause();
-      heartbeatAudioRef.current.currentTime = 0;
-    }
-    if (thudAudioRef.current) {
-      thudAudioRef.current.pause();
-      thudAudioRef.current.currentTime = 0;
-    }
     window.speechSynthesis.cancel();
     
     setIsProcessing(false);
@@ -108,7 +89,6 @@ export function useAudioSync({ onRecordingComplete }: UseAudioSyncProps = {}): U
         // Transition to Processing State (Suspense Buffer)
         setIsRecording(false);
         setIsProcessing(true);
-        heartbeatAudioRef.current?.play().catch(e => console.warn("Audio play failed:", e));
       };
 
       // Start Recording
@@ -132,16 +112,8 @@ export function useAudioSync({ onRecordingComplete }: UseAudioSyncProps = {}): U
    * Handles the Voice Handoff: Stops suspense, plays impact, speaks text.
    */
   const playNarration = useCallback((text: string) => {
-    // Stop Suspense Audio
-    if (heartbeatAudioRef.current) {
-      heartbeatAudioRef.current.pause();
-      heartbeatAudioRef.current.currentTime = 0;
-    }
     setIsProcessing(false);
     setIsSpeaking(true);
-
-    // Play Impact Sound
-    thudAudioRef.current?.play().catch(e => console.warn("Thud play failed:", e));
 
     // Start Speech Synthesis (Native Browser API)
     // We add a small delay to let the thud impact hit first

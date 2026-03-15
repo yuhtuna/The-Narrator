@@ -2,11 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { GameLayout } from './components/layout/GameLayout';
 import { DialogueBox } from './components/ui/DialogueBox';
 import { Dashboard, GameConfig } from './components/ui/Dashboard';
-import { ArtifactScanner } from './components/ui/ArtifactScanner';
-import { InventoryDrawer } from './components/ui/InventoryDrawer';
 import { ChoiceOverlay } from './components/ui/ChoiceOverlay';
 import { useAudioSync } from './hooks/useAudioSync';
-import { Mic, Sparkles, Backpack } from 'lucide-react';
+import { Mic } from 'lucide-react';
 import { processImageForAPI } from './utils/imageUtils';
 import { AnimatePresence, motion } from 'motion/react';
 import { useGame } from './context/GameContext';
@@ -24,8 +22,6 @@ export default function App() {
   const [currentImage, setCurrentImage] = useState("https://picsum.photos/seed/cyberpunk/1920/1080");
   const [nextImage, setNextImage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isScannerOpen, setIsScannerOpen] = useState(false);
-  const [isInventoryOpen, setIsInventoryOpen] = useState(false);
   
   // Narrative State
   const [narrative, setNarrative] = useState("The neon rain slicks the pavement. The city awaits your command.");
@@ -102,17 +98,6 @@ export default function App() {
       setChoices([]);
     }
 
-    if (data.item_name && data.item_description) {
-      dispatch({
-        type: 'ADD_INVENTORY',
-        payload: {
-          id: Math.random().toString(36).substr(2, 9),
-          name: data.item_name,
-          description: data.item_description
-        }
-      });
-    }
-    
     if (!data.imageUrl) {
       setIsProcessing(false);
     }
@@ -154,31 +139,6 @@ export default function App() {
 
     setGameConfig(config);
     setGameState('playing');
-  };
-
-  const handleScan = async (base64: string) => {
-    setIsProcessing(true);
-    setIsScannerOpen(false);
-    playFillerLine();
-    
-    try {
-      const response = await fetch('/api/director/process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          previousContext: `Setting: ${gameConfig?.genre} / ${gameConfig?.style}. ${narrative}`,
-          userAction: 'The player has discovered a new item based on the uploaded image. Analyze & Synthesize.',
-          imageBase64: base64,
-          gameConfig
-        })
-      });
-
-      const data = await response.json();
-      handleDirectorResponse(data);
-    } catch (error) {
-      console.error("Scan API Error", error);
-      setIsProcessing(false);
-    }
   };
 
   const handleNewImageLoaded = () => {
@@ -275,28 +235,6 @@ export default function App() {
           </motion.div>
         </AnimatePresence>
 
-        {/* --- UI LAYER --- */}
-
-        {/* Top Controls */}
-        <div className="absolute top-8 left-8 right-8 flex justify-between z-40">
-          <div className="flex gap-4">
-            <button
-              onClick={() => setIsScannerOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-black/40 hover:bg-emerald-900/40 text-emerald-400 border border-emerald-500/30 rounded-lg backdrop-blur-md transition-all duration-300 group"
-            >
-              <Sparkles className="w-4 h-4 group-hover:rotate-12 transition-transform" />
-              <span className="text-xs font-bold tracking-widest uppercase">Magical Lens</span>
-            </button>
-            <button
-              onClick={() => setIsInventoryOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-black/40 hover:bg-emerald-900/40 text-emerald-400 border border-emerald-500/30 rounded-lg backdrop-blur-md transition-all duration-300 group"
-            >
-              <Backpack className="w-4 h-4 group-hover:scale-110 transition-transform" />
-              <span className="text-xs font-bold tracking-widest uppercase">Inventory ({state.inventory.length})</span>
-            </button>
-          </div>
-        </div>
-
         {/* Unified Input Row */}
         <div className="absolute bottom-10 left-0 right-0 max-w-2xl mx-auto flex items-center gap-4 z-40 px-6">
           <input
@@ -357,17 +295,6 @@ export default function App() {
 
         {/* Overlays */}
         <AnimatePresence>
-          {isScannerOpen && (
-            <ArtifactScanner 
-              onScan={handleScan} 
-              onClose={() => setIsScannerOpen(false)} 
-            />
-          )}
-          <InventoryDrawer 
-            isOpen={isInventoryOpen} 
-            onClose={() => setIsInventoryOpen(false)} 
-            items={state.inventory}
-          />
         </AnimatePresence>
 
       </div>
