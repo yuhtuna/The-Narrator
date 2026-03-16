@@ -76,7 +76,7 @@ export const CHARACTERS = [
 export const STYLES = [
   { id: 'pixel', name: 'Pixel', img: '/images/styles/img1.png' },
   { id: 'anime', name: 'Anime', img: '/images/styles/anime.png' },
-  { id: 'sketch', name: 'Sketch', img: '/images/styles/sketch.png' },
+  { id: 'realistic', name: 'Realistic', img: '/images/styles/real.png' },
 ];
 
 export const GENRES = [

@@ -123,65 +123,53 @@ export function useAudioSync({ onRecordingComplete }: UseAudioSyncProps = {}): U
       currentAudioRef.current.pause();
     }
 
-    try {
-      const response = await fetch('/api/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, speaker }),
-      });
-      const data = await response.json();
-      
-      if (data.audioBase64) {
-        const audioSrc = `data:${data.mimeType};base64,${data.audioBase64}`;
-        const audio = new Audio(audioSrc);
-        currentAudioRef.current = audio;
-        audio.onended = () => setIsSpeaking(false);
-        await audio.play();
-      } else {
-        setIsSpeaking(false);
-      }
-    } catch (error) {
-      console.error("TTS Error:", error);
-      setIsSpeaking(false);
+    // fallback to old window.speechSynthesis if TTS is removed
+    const utterance = new SpeechSynthesisUtterance(text);
+    const voices = window.speechSynthesis.getVoices();
+    // try to find a british voice
+    const narratorVoice = voices.find(v => v.lang === 'en-GB' && v.name.includes('Male')) || voices.find(v => v.lang === 'en-GB') || voices[0];
+    if (narratorVoice) {
+      utterance.voice = narratorVoice;
     }
+    
+    // adjust pitch based on character
+    if (speaker.toLowerCase() !== 'narrator') {
+       utterance.pitch = 1.2;
+    } else {
+       // Deeper pitch and moderate rate for an older British man feel
+       utterance.pitch = 0.55;
+       utterance.rate = 1.05;
+    }
+
+    utterance.onend = () => {
+      setIsSpeaking(false);
+    };
+    
+    window.speechSynthesis.speak(utterance);
+
   }, []);
 
   const playFillerLine = useCallback(async () => {
     const lines = [
-      "The threads of fate weave your choice...",
-      "Let us see what the manuscript reveals...",
-      "The ink dries on a new chapter...",
-      "A new path unfolds before you..."
+      "Let me consult the tomes...",
+      "The weaves of fate are shifting...",
+      "A new thread appears...",
+      "Hold on. Ah, yes, I see it now...",
     ];
-    const randomLine = lines[Math.floor(Math.random() * lines.length)];
-    
-    if (currentAudioRef.current) {
-      currentAudioRef.current.pause();
+    const text = lines[Math.floor(Math.random() * lines.length)];
+    const utterance = new SpeechSynthesisUtterance(text);
+    const voices = window.speechSynthesis.getVoices();
+    const narratorVoice = voices.find(v => v.lang === 'en-GB' && v.name.includes('Male')) || voices.find(v => v.lang === 'en-GB') || voices[0];
+    if (narratorVoice) {
+      utterance.voice = narratorVoice;
     }
+    // Deeper pitch and moderate rate for an older British man feel
+    utterance.pitch = 0.55;
+    utterance.rate = 1.05;
     
-    setIsSpeaking(true);
-
-    try {
-      const response = await fetch('/api/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: randomLine, speaker: 'Narrator' }),
-      });
-      const data = await response.json();
-      
-      if (data.audioBase64) {
-        const audioSrc = `data:${data.mimeType};base64,${data.audioBase64}`;
-        const audio = new Audio(audioSrc);
-        currentAudioRef.current = audio;
-        audio.onended = () => setIsSpeaking(false);
-        await audio.play();
-      } else {
-        setIsSpeaking(false);
-      }
-    } catch (error) {
-      console.error("TTS Error:", error);
-      setIsSpeaking(false);
-    }
+    // Stop any existing spoken items
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
   }, []);
 
   return {

@@ -23,12 +23,89 @@ export default function App() {
   const [speaker, setSpeaker] = useState('Narrator');
   const [inputText, setInputText] = useState('');
   const [awaitingInput, setAwaitingInput] = useState(true);
+  const [sceneQueue, setSceneQueue] = useState<any[]>([]);
+
+  // State buffer to hold narrative values until image loads
+  const [pendingUpdate, setPendingUpdate] = useState<{
+    script: string;
+    speaker: string;
+    requires_user_action: boolean;
+  } | null>(null);
+
+  const applyPendingUpdate = (update: any) => {
+    setNarrative(update.script);
+    setSpeaker(update.speaker);
+    playNarration(update.script, update.speaker);
+    setAwaitingInput(update.requires_user_action);
+    setPendingUpdate(null);
+    setIsProcessing(false);
+  };
+
+  const playNextScene = () => {
+    if (sceneQueue.length === 0) return;
+    
+    // Set to processing immediately so the current image grayscales and input blocks whilst fetching/syncing
+    setIsProcessing(true);
+
+    const sceneToPlay = sceneQueue[0];
+    setSceneQueue(prevQueue => prevQueue.slice(1));
+    
+    let script = sceneToPlay.narration_script || "";
+    const tagMatch = script.match(/\[ALEX_TAG:(\w+)\]/);
+    if (tagMatch) {
+      script = script.replace(/\[ALEX_TAG:\w+\]/, '').trim();
+    }
+
+    const currentSpeaker = sceneToPlay.speaker_name || 'Narrator';
+    
+    // Hold these values in state until image loads to prevent race conditions
+    if (sceneToPlay.imageUrl) {
+        // IMAGE WAS ALREADY PREFETCHED! No need to hit the API, just render immediately.
+        setPendingUpdate({
+          script,
+          speaker: currentSpeaker,
+          requires_user_action: sceneToPlay.requires_user_action
+        });
+        setNextImage(sceneToPlay.imageUrl);
+    } else if (sceneToPlay.visual_prompt) {
+        // Fallback: If player clicked so fast the prefetch didn't finish, block & fetch manually
+        setPendingUpdate({
+          script,
+          speaker: currentSpeaker,
+          requires_user_action: sceneToPlay.requires_user_action
+        });
+
+        fetch('/api/director/image', { 
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({ visual_prompt: sceneToPlay.visual_prompt, gameConfig })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.imageUrl) {
+               // Next image will trigger handleNewImageLoaded
+               setNextImage(data.imageUrl); 
+            } else {
+               // Apply update immediately if image fetch failed to avoid soft lock
+               applyPendingUpdate({script, speaker: currentSpeaker, requires_user_action: sceneToPlay.requires_user_action});
+            }
+        })
+        .catch(() => {
+             // Fallback apply
+             applyPendingUpdate({script, speaker: currentSpeaker, requires_user_action: sceneToPlay.requires_user_action});
+        });
+    } else {
+       // Apply immediately if no image prompt exists
+       applyPendingUpdate({script, speaker: currentSpeaker, requires_user_action: sceneToPlay.requires_user_action});
+    }
+  };
 
   // Audio Sync Hook
   const { isRecording, startRecording, playNarration, playFillerLine } = useAudioSync({
     onRecordingComplete: async (audioBlob) => {
       // State 2: Processing (Time Freeze)
       setIsProcessing(true);
+      playFillerLine();
       
       try {
         const reader = new FileReader();
@@ -63,25 +140,77 @@ export default function App() {
   });
 
   const handleDirectorResponse = (data: any) => {
-    let script = data.narration_script || "";
-    
-    // Parse [ALEX_TAG] (If still returned by backend, strip it since character portrait is removed)
-    const tagMatch = script.match(/\[ALEX_TAG:(\w+)\]/);
-    if (tagMatch) {
-      script = script.replace(/\[ALEX_TAG:\w+\]/, '').trim();
+    // Determine if backend returned the old flat object format vs the new scenes array
+    let allScenes = [];
+    if (data.scenes && Array.isArray(data.scenes) && data.scenes.length > 0) {
+      allScenes = data.scenes;
+    } else if (data.narration_script) {
+      // Fallback: wrap flat single response into a scene format for backward compatibility
+      allScenes = [data]; 
     }
 
-    setNarrative(script);
-    const currentSpeaker = data.speaker_name || 'Narrator';
-    setSpeaker(currentSpeaker);
-    playNarration(script, currentSpeaker);
-    setAwaitingInput(data.requires_user_action !== false); // Default to true unless explicitly false
+    if (allScenes.length > 0) {
+      // Assign unique temp IDs to safely update them in background
+      allScenes = allScenes.map((s: any, idx: number) => ({ ...s, _tempId: Math.random().toString(36) + idx }));
 
-    if (data.imageUrl) {
-      setNextImage(data.imageUrl);
-    }
+      const firstScene = allScenes[0];
+      
+      if (allScenes.length > 1) {
+        const queuedScenes = allScenes.slice(1);
+        setSceneQueue(queuedScenes);
 
-    if (!data.imageUrl) {
+        // --- BACKGROUND PRE-FETCHING ---
+        // Secretly generate the images for the queued frames in the background
+        // so they are instantly ready when the user clicks 'Continue'
+        queuedScenes.forEach((queuedScene: any) => {
+          if (queuedScene.visual_prompt) {
+            fetch('/api/director/image', { 
+               method: 'POST',
+               headers: { 'Content-Type': 'application/json' },
+               body: JSON.stringify({ visual_prompt: queuedScene.visual_prompt, gameConfig })
+            })
+            .then(res => res.json())
+            .then(imgData => {
+                if (imgData.imageUrl) {
+                   // Inject the pre-rendered image URL directly into the queue
+                   setSceneQueue(currentQueue => 
+                      currentQueue.map(s => 
+                         s._tempId === queuedScene._tempId 
+                           ? { ...s, imageUrl: imgData.imageUrl } 
+                           : s
+                      )
+                   );
+                }
+            })
+            .catch(err => console.error("Prefetch failed:", err));
+          }
+        });
+      } else {
+        setSceneQueue([]);
+      }
+      
+      let script = firstScene.narration_script || "";
+      const tagMatch = script.match(/\[ALEX_TAG:(\w+)\]/);
+      if (tagMatch) {
+        script = script.replace(/\[ALEX_TAG:\w+\]/, '').trim();
+      }
+
+      const currentSpeaker = firstScene.speaker_name || 'Narrator';
+
+      // Only generate the FIRST image immediately if it didn't come packed. 
+      // Synchronize text update waiting for image explicitly
+      if (firstScene.imageUrl) {
+        setPendingUpdate({
+           script, 
+           speaker: currentSpeaker, 
+           requires_user_action: firstScene.requires_user_action
+        });
+        setNextImage(firstScene.imageUrl);
+      } else {
+        applyPendingUpdate({script, speaker: currentSpeaker, requires_user_action: firstScene.requires_user_action});
+      }
+    } else {
+      console.error("No scenes array returned:", data);
       setIsProcessing(false);
     }
   };
@@ -124,7 +253,13 @@ export default function App() {
     if (nextImage) {
       setCurrentImage(nextImage);
       setNextImage(null);
-      setIsProcessing(false);
+      
+      // Sync the narrative update when image naturally finishes rendering
+      if (pendingUpdate) {
+         applyPendingUpdate(pendingUpdate);
+      } else {
+         setIsProcessing(false);
+      }
     }
   };
 
@@ -223,13 +358,13 @@ export default function App() {
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleTextSubmit()}
-              disabled={isProcessing || isRecording || !awaitingInput}
+              disabled={isProcessing || isRecording || sceneQueue.length > 0 || !awaitingInput}
               placeholder="Type your action..."
               className="flex-1 bg-black/60 border border-emerald-500/30 text-white placeholder:text-emerald-500/50 rounded-full px-6 py-4 backdrop-blur-md outline-none focus:border-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed"
             />
             <button
               onClick={startRecording}
-              disabled={isRecording || isProcessing || !awaitingInput}
+              disabled={isRecording || isProcessing || sceneQueue.length > 0 || !awaitingInput}
               className={`group relative flex items-center justify-center p-4 rounded-full transition-all duration-300 ${
                 isRecording 
                   ? 'bg-red-600/80 text-white shadow-[0_0_30px_rgba(220,38,38,0.8)] scale-105 animate-pulse' 
@@ -242,10 +377,19 @@ export default function App() {
             </button>
           </div>
 
-          {!awaitingInput && !isProcessing && (
+          {!awaitingInput && !isProcessing && sceneQueue.length > 0 && (
             <button 
-              onClick={() => handleTextSubmitOverride("[The player listens in shocked silence. Continue the plot.]")}
-              className="mt-4 px-8 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full font-bold shadow-lg animate-pulse pointer-events-auto"
+              onClick={playNextScene}
+              className="px-8 py-3 bg-emerald-600 hover:bg-emerald-400 text-white rounded-full font-bold animate-pulse z-50 pointer-events-auto mt-4"
+            >
+              Continue...
+            </button>
+          )}
+
+          {!awaitingInput && !isProcessing && sceneQueue.length === 0 && (
+            <button 
+              onClick={() => handleTextSubmitOverride("[The story continues...]")}
+              className="px-8 py-3 bg-emerald-600 hover:bg-emerald-400 text-white rounded-full font-bold animate-pulse z-50 pointer-events-auto mt-4"
             >
               Continue...
             </button>

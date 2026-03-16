@@ -15,154 +15,120 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
-  // TTS Endpoint using Gemini 2.5 Flash Native Audio
-  app.post("/api/tts", async (req, res) => {
-    try {
-      const { text, speaker } = req.body;
-      if (!text) {
-        res.status(400).json({ error: "text is required" });
-        return;
-      }
-
-      let apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        res.status(500).json({ error: "GEMINI_API_KEY is not set" });
-        return;
-      }
-      
-      apiKey = apiKey.replace(/^["']|["']$/g, '').trim();
-      const ai = new GoogleGenAI({ apiKey });
-
-      let voicePrompt = `Please speak the following text. You are a character named ${speaker || 'Unknown'}. Give them a distinct, clear, and expressive voice. Text to speak: "${text}"`;
-      
-      if (speaker?.toLowerCase() === 'narrator') {
-        voicePrompt = `Please speak the following text using the voice of an old 1950s British man. The tone should be calm, authoritative, and slightly weathered. Text to speak: "${text}"`;
-      }
-
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-native-audio-preview-12-2025",
-        contents: voicePrompt,
-        config: {
-          responseModalities: ["AUDIO"],
-        },
-      });
-
-      const audioBase64 = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-      const mimeType = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.mimeType || "audio/pcm";
-
-      if (audioBase64) {
-        res.json({ audioBase64, mimeType });
-      } else {
-        throw new Error("No audio data returned from Gemini");
-      }
-    } catch (error) {
-      console.error("TTS Generation Error:", error);
-      res.status(500).json({ error: "Failed to generate TTS" });
-    }
-  });
-
-  // Director Agent Endpoint
+  // 2. Stable Director + Banana 2 Image Generation
   app.post("/api/director/process", async (req, res) => {
     try {
-      const { userAction, previousContext, imageBase64, audioBase64, gameConfig } = req.body;
-
-      if (!userAction) {
-        res.status(400).json({ error: "userAction is required" });
-        return;
-      }
+      const { userAction, previousContext, gameConfig } = req.body;
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY!.trim() });
 
       const style = gameConfig?.style || 'Anime';
       const genre = gameConfig?.genre || 'High Fantasy';
 
-      let apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        res.status(500).json({ error: "GEMINI_API_KEY is not set" });
-        return;
-      }
+      // DETERMINISTIC PLOT PROMPT
+      const systemInstruction = `You are the Director of a ${genre} visual novel in a highly stylized ${style} art style. Address the user as "You". 
+      Global plot twists are deterministic and controlled by YOU. 
+      You MUST output a 'scenes' array. For a single turn, generate a sequence of 2-3 cinematic scenes. 
+      Only the very last scene in that array should ever have requires_user_action: true. 
+      All previous scenes in that batch must be false.
       
-      // Remove any accidental quotes from the API key
-      apiKey = apiKey.replace(/^["']|["']$/g, '').trim();
-
-      const ai = new GoogleGenAI({ apiKey });
-
-      const systemInstruction = `You are the Director of a ${genre} visual novel. The global plot is strictly deterministic and full of massive, shocking twists that you control. The User is the Main Character ("You"), but they only control local, immediate actions. Drive the story forward aggressively. End your script by explicitly asking what the user does next AND set requires_user_action to true. IF you are just narrating a sudden plot twist and don't need input yet, set requires_user_action to false.`;
-
-      const promptText = `
-Previous Context: ${previousContext || "The story begins."}
-User Action: ${userAction}
-`;
-
-      const parts: any[] = [{ text: promptText }];
-      if (imageBase64) {
-        parts.push({
-          inlineData: {
-            data: imageBase64,
-            mimeType: "image/jpeg",
-          },
-        });
-      }
-      if (audioBase64) {
-        parts.push({
-          inlineData: {
-            data: audioBase64,
-            mimeType: "audio/webm",
-          },
-        });
-      }
-
-      const requiredFields = ["visual_prompt", "narration_script", "speaker_name", "requires_user_action"];
-      if (imageBase64) {
-        requiredFields.push("item_name", "item_description");
-      }
+      CRITICAL ART RULE: Every visual_prompt you output MUST explicitly mention "in a pure ${style} art style" of a ${genre} setting. If the style is 'Realistic', you must enforce "cinematic photography, ultra-realistic, photorealistic, 8k resolution".
+      
+      CRITICAL PACING RULE: The entire game is a micro-short story. It MUST conclude after exactly 2 user interactions (which equals about 6 to 7 scenes TOTAL). 
+      Escalate the plot immediately toward a climax. On the final turn, conclude the story with a definitive ending. When the story ends, set requires_user_action to false for ALL scenes to permanently lock the game and end the experience.`;
 
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: [{ parts }],
+        model: "gemini-2.5-flash", // STABLE (NO 429s)
+        contents: [{ parts: [{ text: `Context: ${previousContext}\nAction: ${userAction}` }] }],
         config: {
-          systemInstruction: systemInstruction,
+          systemInstruction,
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
             properties: {
-              visual_prompt: { type: Type.STRING },
-              narration_script: { type: Type.STRING },
-              speaker_name: { type: Type.STRING },
-              item_name: { type: Type.STRING },
-              item_description: { type: Type.STRING },
-              requires_user_action: { type: Type.BOOLEAN },
+              scenes: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    visual_prompt: { type: Type.STRING },
+                    narration_script: { type: Type.STRING },
+                    speaker_name: { type: Type.STRING },
+                    requires_user_action: { type: Type.BOOLEAN } // NEW PLOT MECHANIC
+                  },
+                  required: ["visual_prompt", "narration_script", "speaker_name", "requires_user_action"]
+                }
+              }
             },
-            required: requiredFields,
+            required: ["scenes"],
           },
         },
       });
 
-      const responseText = response.text;
-      if (!responseText) {
-        throw new Error("No response text from Gemini");
-      }
+      const jsonResponse = JSON.parse(response.text);
 
-      const jsonResponse = JSON.parse(responseText);
+      // IMAGE GENERATION (Only generated the first frame initially to prevent blocking the UI)
+      if (jsonResponse.scenes && Array.isArray(jsonResponse.scenes) && jsonResponse.scenes.length > 0) {
+        const firstScene = jsonResponse.scenes[0];
+        if (firstScene.visual_prompt) {
+          let firstPrompt = firstScene.visual_prompt;
+          const lowerStyle = style.toLowerCase();
+          if (lowerStyle === 'realistic') {
+              firstPrompt += `, cinematic photography, ultra-realistic, highly detailed, photorealistic, 8k resolution, realistic textures, volumetric lighting.`;
+          } else if (lowerStyle === 'pixel') {
+              firstPrompt += `, strict 16-bit pixel art, retro video game style, pixelated, low resolution, 2D flat, absolutely NO photorealism, NO 3D.`;
+          } else {
+              firstPrompt += `, entirely in a pure 2D ${style} art style, flat colors, 2D illustration, absolutely NO photorealism, NO 3D.`;
+          }
 
-      if (jsonResponse.visual_prompt) {
-        try {
-          const imageResponse = await ai.models.generateImages({
-            model: 'imagen-3.0-generate-001',
-            prompt: jsonResponse.visual_prompt,
-            config: { numberOfImages: 1, outputMimeType: 'image/jpeg' }
-          });
-          const base64EncodeString = imageResponse.generatedImages[0].image.imageBytes;
-          jsonResponse.imageUrl = `data:image/jpeg;base64,${base64EncodeString}`;
-        } catch (imageError) {
-          console.error("🚨 IMAGE GEN ERROR 🚨:", imageError);
-          jsonResponse.imageUrl = undefined;
+          try {
+            const imageRes = await ai.models.generateContent({
+              model: "gemini-3.1-flash-image-preview",
+              contents: firstPrompt,
+              config: { responseModalities: ["IMAGE"] }
+            });
+            const base64 = imageRes.candidates[0].content.parts[0].inlineData.data;
+            firstScene.imageUrl = `data:image/jpeg;base64,${base64}`;
+          } catch (e) {
+            firstScene.imageUrl = undefined; // Prevents UI freeze
+          }
         }
       }
-
       res.json(jsonResponse);
-
     } catch (error) {
-      console.error("Director Agent Error:", error);
-      res.status(500).json({ error: "Failed to process director request" });
+      res.status(500).json({ error: "Director Failed" });
+    }
+  });
+
+  // Dedicated Route for Generating Iterative Frame Images
+  app.post("/api/director/image", async (req, res) => {
+    try {
+      const { visual_prompt, gameConfig } = req.body;
+      if (!visual_prompt) return res.status(400).json({ error: "No prompt provided" });
+
+      const style = gameConfig?.style || 'Anime';
+
+      // Enforce the style strongly at the image generation boundary if AI forgets
+      let finalPrompt = visual_prompt;
+      const lowerStyle = style.toLowerCase();
+      if (lowerStyle === 'realistic') {
+          finalPrompt += `, cinematic photography, ultra-realistic, highly detailed, photorealistic, 8k resolution, realistic textures, volumetric lighting.`;
+      } else if (lowerStyle === 'pixel') {
+          finalPrompt += `, strict 16-bit pixel art, retro video game style, pixelated, low resolution, 2D flat, absolutely NO photorealism, NO 3D.`;
+      } else {
+          finalPrompt += `, entirely in a pure 2D ${style} art style, flat colors, 2D illustration, absolutely NO photorealism, NO 3D.`;
+      }
+
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY!.trim() });
+      const imageRes = await ai.models.generateContent({
+         model: "gemini-3.1-flash-image-preview",
+         contents: finalPrompt,
+         config: { responseModalities: ["IMAGE"] }
+      });
+      const base64 = imageRes.candidates[0].content.parts[0].inlineData.data;
+      res.json({ imageUrl: `data:image/jpeg;base64,${base64}` });
+    } catch (error) {
+      console.error("Single Image Failed:", error);
+      res.json({ imageUrl: undefined });
     }
   });
 
