@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { GameLayout } from './components/layout/GameLayout';
 import { DialogueBox } from './components/ui/DialogueBox';
-import { Dashboard, GameConfig } from './components/ui/Dashboard';
+import { Dashboard, GameConfig, GENRES, STYLES } from './components/ui/Dashboard';
 import { useAudioSync } from './hooks/useAudioSync';
 import { Mic } from 'lucide-react';
 import { processImageForAPI } from './utils/imageUtils';
@@ -17,12 +17,12 @@ export default function App() {
   const [userReferenceImage, setUserReferenceImage] = useState<string | null>(null);
 
   // Visual State Machine
-  const [currentImage, setCurrentImage] = useState("https://picsum.photos/seed/cyberpunk/1920/1080");
+  const [currentImage, setCurrentImage] = useState("/images/genres/DF.png"); // Default dark fantasy placeholder instead of picsum
   const [nextImage, setNextImage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  
+
   // Narrative State
-  const [narrative, setNarrative] = useState("The neon rain slicks the pavement. The city awaits your command.");
+  const [narrative, setNarrative] = useState("The ink dries on the manuscript. The world awaits your command.");
   const [alexExpression, setAlexExpression] = useState<'neutral' | 'surprised' | 'serious' | 'thinking'>('neutral');
   const [speaker, setSpeaker] = useState('Narrator');
   const [inputText, setInputText] = useState('');
@@ -94,7 +94,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (gameState === 'playing' && narrative === "The neon rain slicks the pavement. The city awaits your command.") {
+    if (gameState === 'playing' && narrative === "The ink dries on the manuscript. The world awaits your command.") {
       setIsProcessing(true);
       setNarrative("Initializing world and summoning protagonist...");
       
@@ -125,6 +125,12 @@ export default function App() {
       } catch (error) {
         console.error("Failed to process custom image:", error);
       }
+    }
+
+    // Set an initial background based on the chosen genre before AI generates one
+    const selectedGenreInfo = GENRES.find(g => g.id === config.genre);
+    if (selectedGenreInfo) {
+      setCurrentImage(selectedGenreInfo.img);
     }
 
     setGameConfig(config);
@@ -209,18 +215,14 @@ export default function App() {
             exit={{ opacity: 0, x: 50 }}
             className="absolute bottom-0 right-0 w-1/3 h-full z-20 pointer-events-none flex items-end justify-end"
           >
-            {/* Character Portrait Placeholder */}
+            {/* Character Portrait */}
             <div className="relative w-full h-4/5">
                <img 
-                src={`https://picsum.photos/seed/alex-${alexExpression}/800/1200`}
-                alt="Alex"
+                src={gameConfig?.character === 'custom' && userReferenceImage ? `data:image/jpeg;base64,${userReferenceImage}` : '/images/characters/alex.png'}
+                alt={gameConfig?.customName || "Protagonist"}
                 className="w-full h-full object-contain drop-shadow-[0_0_30px_rgba(52,211,153,0.3)]"
                 referrerPolicy="no-referrer"
                />
-               {/* Expression Label for Debug/Demo */}
-               <div className="absolute top-20 right-10 bg-emerald-500/20 backdrop-blur-md border border-emerald-500/40 px-3 py-1 rounded text-[10px] text-emerald-400 font-mono uppercase tracking-widest">
-                 Alex: {alexExpression}
-               </div>
             </div>
           </motion.div>
         </AnimatePresence>

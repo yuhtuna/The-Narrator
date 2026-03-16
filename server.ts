@@ -42,25 +42,25 @@ async function startServer() {
 
       const systemInstruction = `
 You are the Director of "The Narrator", a real-time interactive visual novel.
-Theme: High Fantasy Anime.
+Theme: You are constructing a deep, emotionally resonant, and dynamic storyline based on the chosen genre.
 Protagonist Constraints: If an image is provided, YOU MUST ANALYZE IT. The primary subject of that image is the Main Character. Their name is ${customName || "a fitting fantasy name"}. Describe them adapting to the requested Visual Style (${style}). If NO image is provided, the Main Character is Alex, a 20-year-old adventurer.
 Visual Style: ${style}.
-Narrative Tone: ${genre}.
+Narrative Tone: ${genre}. 
 
-You are the Narrator, the global router of this world. The protagonist is ${customName || "Alex"}. There can be many other NPCs and enemies.
+You are both the Narrator and the voice of the world's inhabitants. The protagonist is ${customName || "Alex"}. The world should feel alive, deeply immersive, and full of complex consequences, character developments, and environmental storytelling.
 
 Your task:
 1. Analyze the User's Action and the Previous Context.
-2. Determine the immediate narrative consequence.
-3. Generate a highly detailed visual prompt for an image generation model (Nano Banana) that captures the new scene.
-4. Generate a punchy, 1-2 sentence narration script for the voice actor.
-5. If an image is provided, identify the object and transform it into a magical relic or companion fitting the genre.
+2. Determine the immediate narrative consequence, ensuring it pushes the story forward in a meaningful or dramatic way based on the ${genre} tone.
+3. Generate a highly detailed, breathtaking visual prompt for an image generation model. Include elements of mood, exact cinematic lighting, character expressions, intricate backgrounds, and dynamic compositions.
+4. Generate a punchy, emotionally gripping narration script or character dialogue (1-3 sentences).
+5. If an image is provided, identify the object and transform it into an important story artifact, companion, or obstacle fitting the genre.
 6. If audio is provided, carefully transcribe the user's spoken intent and use it as their action for the current turn.
-7. When writing the narration_script, determine who is speaking. Output the name of the speaker in the speaker_name field (e.g., "Narrator", "${customName || "Alex"}", "The Goblin King").
+7. Determine who is speaking the script. Output their name in the speaker_name field (e.g., "Narrator", "${customName || "Alex"}", "A mysterious stranger", etc.).
 
 Constraints:
-- Visual Prompt: Detailed, cinematic lighting, ${style} style, high contrast. Every visual_prompt MUST feature this protagonist prominently, rendered strictly in the ${style} art style.
-- Narration: Second-person ("You..."), directly addressing the user as this protagonist, fitting the ${genre} tone.
+- Visual Prompt: Detailed, masterpiece, trending on artstation, ${style} style, high contrast, vivid and immersive atmosphere. Every visual_prompt MUST prominently feature the active subjects and mood.
+- Narration: Make it captivating. If speaking as the Narrator, use second-person ("You..."); if speaking as a character, use first-person speech.
 - Output: Strict JSON.
 `;
 
@@ -121,37 +121,28 @@ User Action: ${userAction}
 
       if (jsonResponse.visual_prompt) {
         try {
-          const imageResponse = await ai.models.generateContent({
-            model: 'gemini-2.5-flash-image',
-            contents: [{
-              parts: [
-                {
-                  text: jsonResponse.visual_prompt,
-                },
-              ],
-            }],
+          const imageResponse = await ai.models.generateImages({
+            model: 'imagen-3.0-generate-001',
+            prompt: jsonResponse.visual_prompt,
             config: {
-              // Let the model use its default resolution
+              numberOfImages: 1,
+              outputMimeType: 'image/jpeg',
+              aspectRatio: '16:9'
             },
           });
 
-          let base64EncodeString = "";
-          for (const part of imageResponse.candidates?.[0]?.content?.parts || []) {
-            if (part.inlineData) {
-              base64EncodeString = part.inlineData.data;
-              break;
-            }
-          }
-
-          if (base64EncodeString) {
+          if (imageResponse.generatedImages && imageResponse.generatedImages.length > 0) {
+            const base64EncodeString = imageResponse.generatedImages[0].image.imageBytes;
             jsonResponse.imageUrl = `data:image/jpeg;base64,${base64EncodeString}`;
           } else {
             throw new Error("No image data in response");
           }
         } catch (imageError) {
-          console.error("Gemini 2.5 Flash Image Error:", imageError);
-          // Fallback if image generation fails
-          jsonResponse.imageUrl = `https://picsum.photos/seed/${encodeURIComponent(jsonResponse.visual_prompt)}/1920/1080`;
+          console.error("Gemini Imagen Error:", imageError);
+          // Fallback if image generation fails (maybe to a public style folder image?)
+          // But since we are dynamic, returning null lets the frontend keep the current image
+          // or we provide a dramatic fallback from local public if needed
+          jsonResponse.imageUrl = null; // Let the frontend keep the current scene
         }
       }
 

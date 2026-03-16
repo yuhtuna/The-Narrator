@@ -72,17 +72,17 @@ function FallbackImage({ src, alt, className }: { src: string, alt: string, clas
   );
 }
 
-const CHARACTERS = [
+export const CHARACTERS = [
   { id: 'default', name: 'Alex (Default)', img: '/images/characters/alex.png' },
 ];
 
-const STYLES = [
+export const STYLES = [
   { id: 'pixel', name: 'Pixel', img: '/images/styles/img1.png' },
   { id: 'anime', name: 'Anime', img: '/images/styles/anime.png' },
   { id: 'sketch', name: 'Sketch', img: '/images/styles/sketch.png' },
 ];
 
-const GENRES = [
+export const GENRES = [
   { id: 'action', name: 'Action', img: '/images/genres/action.png' },
   { id: 'slice-of-life', name: 'Slice of Life', img: '/images/genres/SOL.png' },
   { id: 'dark-fantasy', name: 'Dark Fantasy', img: '/images/genres/DF.png' },
@@ -145,7 +145,7 @@ export function Dashboard({ onStartGame }: DashboardProps) {
       <div className="fixed inset-0 z-0 overflow-hidden">
         <div 
           className="w-full h-full bg-cover bg-center opacity-40 animate-ken-burns"
-          style={{ backgroundImage: 'url(https://images.unsplash.com/photo-1481627834876-b7833e8f5570?q=80&w=1920&auto=format&fit=crop)' }}
+          style={{ backgroundImage: 'url(/images/genres/DF.png)' }}
         />
         <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/80 via-zinc-950/90 to-zinc-950" />
         <ManaParticles />

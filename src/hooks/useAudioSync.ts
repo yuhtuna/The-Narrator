@@ -23,21 +23,30 @@ interface UseAudioSyncReturn {
  * Manages the microphone input timer, suspense audio loop, and narration playback.
  */
 export function useAudioSync({ onRecordingComplete }: UseAudioSyncProps = {}): UseAudioSyncReturn {
-  // State
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
 
-  // Refs for audio elements and recorder to persist across renders
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Initialize audio elements on mount
+  // Initialize voices on mount
   useEffect(() => {
-    // Cleanup on unmount
+    const populateVoices = () => {
+      const voices = window.speechSynthesis.getVoices();
+      if (voices.length > 0) {
+        setAvailableVoices(voices);
+      }
+    };
+
+    populateVoices();
+    window.speechSynthesis.onvoiceschanged = populateVoices;
+
     return () => {
       stopAllAudio();
+      window.speechSynthesis.onvoiceschanged = null;
     };
   }, []);
 
@@ -120,17 +129,36 @@ export function useAudioSync({ onRecordingComplete }: UseAudioSyncProps = {}): U
     setTimeout(() => {
       const utterance = new SpeechSynthesisUtterance(text);
       
-      // Configure voice (optional: try to find a "Google" or "Microsoft" voice if available)
-      const voices = window.speechSynthesis.getVoices();
-      const preferredVoice = voices.find(v => v.name.includes('Google US English') || v.name.includes('Microsoft David'));
-      if (preferredVoice) utterance.voice = preferredVoice;
+      const voices = availableVoices.length > 0 ? availableVoices : window.speechSynthesis.getVoices();
+      
+      if (voices.length > 0) {
+        // Filter to more premium/human-like cloud voices first (usually include 'Google' in Chrome, or 'Online'/'Premium' in Edge)
+        const premiumVoices = voices.filter(v => v.name.includes('Google') || v.name.includes('Premium') || v.name.includes('Natural'));
+        const activePool = premiumVoices.length > 0 ? premiumVoices : voices;
 
-      if (speaker.toLowerCase() === 'narrator') {
-        utterance.pitch = 0.5;
-        utterance.rate = 0.95;
-      } else {
-        utterance.pitch = 1.0;
-        utterance.rate = 1.0;
+        // Simple string hash to deterministically pick a voice array index
+        const hash = speaker.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+        
+        if (speaker.toLowerCase() === 'narrator') {
+          // Deep, clear voice
+          const narratorVoice = activePool.find(v => v.name.includes('UK English Male') || v.name.includes('Male') || v.name.includes('Mark'));
+          if (narratorVoice) utterance.voice = narratorVoice;
+          utterance.pitch = 0.5;
+          utterance.rate = 0.95;
+        } else if (speaker.toLowerCase() === 'alex') {
+          // Youthful active voice
+          const alexVoice = activePool.find(v => v.name.includes('US English Male') || v.name.includes('Zira') || v.name.includes('Female'));
+          if (alexVoice) utterance.voice = alexVoice;
+          utterance.pitch = 1.0;
+          utterance.rate = 1.05;
+        } else {
+          // For NPCs
+          const index = hash % activePool.length;
+          utterance.voice = activePool[index];
+          
+          utterance.pitch = 0.6 + ((hash % 10) / 10) * 0.8; // Range 0.6 - 1.4
+          utterance.rate = 0.85 + ((hash % 5) / 10) * 0.3; // Range 0.85 - 1.15
+        }
       }
 
       utterance.onend = () => {
@@ -140,7 +168,7 @@ export function useAudioSync({ onRecordingComplete }: UseAudioSyncProps = {}): U
       window.speechSynthesis.speak(utterance);
     }, 300); // 300ms delay for dramatic effect
 
-  }, []);
+  }, [availableVoices]);
 
   const playFillerLine = useCallback(() => {
     const lines = [
@@ -153,10 +181,18 @@ export function useAudioSync({ onRecordingComplete }: UseAudioSyncProps = {}): U
     
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(randomLine);
+    
+    const voices = availableVoices.length > 0 ? availableVoices : window.speechSynthesis.getVoices();
+    const premiumVoices = voices.filter(v => v.name.includes('Google') || v.name.includes('Premium') || v.name.includes('Natural'));
+    const activePool = premiumVoices.length > 0 ? premiumVoices : voices;
+    
+    const narratorVoice = activePool.find(v => v.name.includes('UK English Male') || v.name.includes('Male') || v.name.includes('Mark'));
+    if (narratorVoice) utterance.voice = narratorVoice;
+    
     utterance.rate = 0.9;
-    utterance.pitch = 0.9;
+    utterance.pitch = 0.5;
     window.speechSynthesis.speak(utterance);
-  }, []);
+  }, [availableVoices]);
 
   return {
     isRecording,
