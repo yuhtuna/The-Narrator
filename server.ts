@@ -18,23 +18,31 @@ async function startServer() {
   // 2. Stable Director + Banana 2 Image Generation
   app.post("/api/director/process", async (req, res) => {
     try {
-      const { userAction, previousContext, gameConfig } = req.body;
+      const { userAction, previousContext, gameConfig, turn } = req.body;
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY!.trim() });
 
       const style = gameConfig?.style || 'Anime';
       const genre = gameConfig?.genre || 'High Fantasy';
+      const currentTurn = turn || 1;
+
+      let pacingInstruction = "";
+      if (currentTurn === 1) {
+        pacingInstruction = `This is TURN 1 (Introduction). You MUST generate EXACTLY 2 scenes. The 2nd scene MUST have requires_user_action: true.`;
+      } else if (currentTurn === 2) {
+        pacingInstruction = `This is TURN 2 (Rising Action). You MUST generate EXACTLY 3 scenes based on the user's action. The 3rd scene of this batch MUST have requires_user_action: true.`;
+      } else {
+        pacingInstruction = `This is TURN 3 (Climax and Ending). You MUST generate EXACTLY 2 scenes to conclude the story definitively based on the user's action. Set is_game_over to true at the JSON root, and requires_user_action to false for ALL scenes.`;
+      }
 
       // DETERMINISTIC PLOT PROMPT
       const systemInstruction = `You are the Director of a ${genre} visual novel in a highly stylized ${style} art style. Address the user as "You". 
       Global plot twists are deterministic and controlled by YOU. 
-      You MUST output a 'scenes' array. For a single turn, generate a sequence of 2-3 cinematic scenes. 
-      Only the very last scene in that array should ever have requires_user_action: true. 
-      All previous scenes in that batch must be false.
+      You MUST output a 'scenes' array.
       
       CRITICAL ART RULE: Every visual_prompt you output MUST explicitly mention "in a pure ${style} art style" of a ${genre} setting. If the style is 'Realistic', you must enforce "cinematic photography, ultra-realistic, photorealistic, 8k resolution".
       
-      CRITICAL PACING RULE: The entire game is a micro-short story. It MUST conclude after exactly 2 user interactions (which equals about 6 to 7 scenes TOTAL). 
-      Escalate the plot immediately toward a climax. On the final turn, conclude the story with a definitive ending. When the story ends, set requires_user_action to false for ALL scenes to permanently lock the game and end the experience.`;
+      CRITICAL PACING RULE:
+      ${pacingInstruction}`;
 
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash", // STABLE (NO 429s)
@@ -45,6 +53,7 @@ async function startServer() {
           responseSchema: {
             type: Type.OBJECT,
             properties: {
+              is_game_over: { type: Type.BOOLEAN },
               scenes: {
                 type: Type.ARRAY,
                 items: {

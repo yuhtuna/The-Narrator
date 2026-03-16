@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { GameLayout } from './components/layout/GameLayout';
 import { DialogueBox } from './components/ui/DialogueBox';
 import { Dashboard, GameConfig, GENRES, STYLES } from './components/ui/Dashboard';
@@ -24,6 +24,8 @@ export default function App() {
   const [inputText, setInputText] = useState('');
   const [awaitingInput, setAwaitingInput] = useState(true);
   const [sceneQueue, setSceneQueue] = useState<any[]>([]);
+  const [isGameOverQueued, setIsGameOverQueued] = useState(false);
+  const turnCountRef = useRef(1);
 
   // State buffer to hold narrative values until image loads
   const [pendingUpdate, setPendingUpdate] = useState<{
@@ -121,7 +123,8 @@ export default function App() {
                 userAction: "The player has spoken. Listen to the provided audio to determine their action.",
                 previousContext: `Setting: ${gameConfig?.genre} / ${gameConfig?.style}. ${narrative}`,
                 audioBase64: base64data,
-                gameConfig
+                gameConfig,
+                turn: turnCountRef.current
               })
             });
             
@@ -142,6 +145,10 @@ export default function App() {
   const handleDirectorResponse = (data: any) => {
     // Determine if backend returned the old flat object format vs the new scenes array
     let allScenes = [];
+    if (data.is_game_over) {
+      setIsGameOverQueued(true);
+    }
+
     if (data.scenes && Array.isArray(data.scenes) && data.scenes.length > 0) {
       allScenes = data.scenes;
     } else if (data.narration_script) {
@@ -150,6 +157,9 @@ export default function App() {
     }
 
     if (allScenes.length > 0) {
+      // Successfully processed a turn, increment for the next one
+      turnCountRef.current += 1;
+
       // Assign unique temp IDs to safely update them in background
       allScenes = allScenes.map((s: any, idx: number) => ({ ...s, _tempId: Math.random().toString(36) + idx }));
 
@@ -226,7 +236,8 @@ export default function App() {
         body: JSON.stringify({
           userAction: 'The player has entered the world. Introduce the scene.',
           previousContext: `Setting: ${gameConfig?.genre} / ${gameConfig?.style}.`,
-          gameConfig
+          gameConfig,
+          turn: turnCountRef.current
         })
       })
       .then(res => res.json())
@@ -239,6 +250,16 @@ export default function App() {
   }, [gameState, narrative, gameConfig]);
 
   const handleStartGame = async (config: GameConfig) => {
+    // Reset any previous game over state
+    setIsGameOverQueued(false);
+    setSceneQueue([]);
+    setPendingUpdate(null);
+    setNarrative("The ink dries on the manuscript. The world awaits your command.");
+    setSpeaker("Narrator");
+    setAwaitingInput(true);
+    setInputText("");
+    turnCountRef.current = 1;
+
     // Set an initial background based on the chosen genre before AI generates one
     const selectedGenreInfo = GENRES.find(g => g.id === config.genre);
     if (selectedGenreInfo) {
@@ -272,7 +293,8 @@ export default function App() {
         body: JSON.stringify({
           userAction: overrideText,
           previousContext: `Setting: ${gameConfig?.genre} / ${gameConfig?.style}. ${narrative}`,
-          gameConfig
+          gameConfig,
+          turn: turnCountRef.current
         })
       });
       const data = await response.json();
@@ -299,7 +321,8 @@ export default function App() {
         body: JSON.stringify({
           userAction: actionText,
           previousContext: `Setting: ${gameConfig?.genre} / ${gameConfig?.style}. ${narrative}`,
-          gameConfig
+          gameConfig,
+          turn: turnCountRef.current
         })
       });
       
@@ -386,7 +409,7 @@ export default function App() {
             </button>
           )}
 
-          {!awaitingInput && !isProcessing && sceneQueue.length === 0 && (
+          {!awaitingInput && !isProcessing && sceneQueue.length === 0 && !isGameOverQueued && (
             <button 
               onClick={() => handleTextSubmitOverride("[The story continues...]")}
               className="px-8 py-3 bg-emerald-600 hover:bg-emerald-400 text-white rounded-full font-bold animate-pulse z-50 pointer-events-auto mt-4"
@@ -396,6 +419,21 @@ export default function App() {
           )}
 
         </div>
+
+        {/* End Screen Overlay */}
+        {isGameOverQueued && sceneQueue.length === 0 && !isProcessing && (
+          <div 
+            className="absolute inset-0 z-[100] bg-black flex flex-col items-center justify-center cursor-pointer"
+            onClick={() => setGameState('setup')}
+          >
+            <h1 className="text-6xl text-emerald-400 font-serif mb-8 tracking-widest uppercase">
+              The End
+            </h1>
+            <p className="text-zinc-500 font-mono text-lg animate-pulse">
+              Click anywhere to return to the dashboard
+            </p>
+          </div>
+        )}
 
         {/* Overlays */}
         {/* Intentionally left blank for future overlays */}
