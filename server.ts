@@ -15,6 +15,52 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
+  // TTS Endpoint using Gemini 2.5 Flash Native Audio
+  app.post("/api/tts", async (req, res) => {
+    try {
+      const { text, speaker } = req.body;
+      if (!text) {
+        res.status(400).json({ error: "text is required" });
+        return;
+      }
+
+      let apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        res.status(500).json({ error: "GEMINI_API_KEY is not set" });
+        return;
+      }
+      
+      apiKey = apiKey.replace(/^["']|["']$/g, '').trim();
+      const ai = new GoogleGenAI({ apiKey });
+
+      let voicePrompt = `Please speak the following text. You are a character named ${speaker || 'Unknown'}. Give them a distinct, clear, and expressive voice. Text to speak: "${text}"`;
+      
+      if (speaker?.toLowerCase() === 'narrator') {
+        voicePrompt = `Please speak the following text using the voice of an old 1950s British man. The tone should be calm, authoritative, and slightly weathered. Text to speak: "${text}"`;
+      }
+
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash-native-audio-preview-12-2025",
+        contents: voicePrompt,
+        config: {
+          responseModalities: ["AUDIO"],
+        },
+      });
+
+      const audioBase64 = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      const mimeType = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.mimeType || "audio/pcm";
+
+      if (audioBase64) {
+        res.json({ audioBase64, mimeType });
+      } else {
+        throw new Error("No audio data returned from Gemini");
+      }
+    } catch (error) {
+      console.error("TTS Generation Error:", error);
+      res.status(500).json({ error: "Failed to generate TTS" });
+    }
+  });
+
   // Director Agent Endpoint
   app.post("/api/director/process", async (req, res) => {
     try {
@@ -27,7 +73,6 @@ async function startServer() {
 
       const style = gameConfig?.style || 'Anime';
       const genre = gameConfig?.genre || 'High Fantasy';
-      const customName = gameConfig?.customName;
 
       let apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) {
@@ -40,29 +85,8 @@ async function startServer() {
 
       const ai = new GoogleGenAI({ apiKey });
 
-      const systemInstruction = `
-You are the Director of "The Narrator", a real-time interactive visual novel.
-Theme: You are constructing a deep, emotionally resonant, and dynamic storyline based on the chosen genre.
-Protagonist Constraints: If an image is provided, YOU MUST ANALYZE IT. The primary subject of that image is the Main Character. Their name is ${customName || "a fitting fantasy name"}. Describe them adapting to the requested Visual Style (${style}). If NO image is provided, the Main Character is Alex, a 20-year-old adventurer.
-Visual Style: ${style}.
-Narrative Tone: ${genre}. 
-
-You are both the Narrator and the voice of the world's inhabitants. The protagonist is ${customName || "Alex"}. The world should feel alive, deeply immersive, and full of complex consequences, character developments, and environmental storytelling.
-
-Your task:
-1. Analyze the User's Action and the Previous Context.
-2. Determine the immediate narrative consequence, ensuring it pushes the story forward in a meaningful or dramatic way based on the ${genre} tone.
-3. Generate a highly detailed, breathtaking visual prompt for an image generation model. Include elements of mood, exact cinematic lighting, character expressions, intricate backgrounds, and dynamic compositions.
-4. Generate a punchy, emotionally gripping narration script or character dialogue (1-3 sentences).
-5. If an image is provided, identify the object and transform it into an important story artifact, companion, or obstacle fitting the genre.
-6. If audio is provided, carefully transcribe the user's spoken intent and use it as their action for the current turn.
-7. Determine who is speaking the script. Output their name in the speaker_name field (e.g., "Narrator", "${customName || "Alex"}", "A mysterious stranger", etc.).
-
-Constraints:
-- Visual Prompt: Detailed, masterpiece, trending on artstation, ${style} style, high contrast, vivid and immersive atmosphere. Every visual_prompt MUST prominently feature the active subjects and mood.
-- Narration: Make it captivating. If speaking as the Narrator, use second-person ("You..."); if speaking as a character, use first-person speech.
-- Output: Strict JSON.
-`;
+      const systemInstruction = `You are the elite Director of a real-time ${genre} visual novel in a ${style} art style. The User is the Main Character. Address them strictly as "You". NEVER use the name "Alex" or invent a name for them. >    Starting Anchor: If this is the very first turn of the game, ALWAYS start the scene with the user finishing a drink at a local establishment (e.g., a fantasy tavern, a cyberpunk noodle bar, or a modern cafe depending on the ${genre}) and stepping outside to discover something unexpected.
+Keep the narration_script punchy and atmospheric (2-4 sentences max). Determine who is speaking and output their name in speaker_name. Output a highly descriptive visual_prompt for the background art.`;
 
       const promptText = `
 Previous Context: ${previousContext || "The story begins."}
@@ -120,30 +144,25 @@ User Action: ${userAction}
       const jsonResponse = JSON.parse(responseText);
 
       if (jsonResponse.visual_prompt) {
-        try {
-          const imageResponse = await ai.models.generateImages({
-            model: 'imagen-3.0-generate-001',
-            prompt: jsonResponse.visual_prompt,
-            config: {
-              numberOfImages: 1,
-              outputMimeType: 'image/jpeg',
-              aspectRatio: '16:9'
-            },
-          });
-
-          if (imageResponse.generatedImages && imageResponse.generatedImages.length > 0) {
-            const base64EncodeString = imageResponse.generatedImages[0].image.imageBytes;
-            jsonResponse.imageUrl = `data:image/jpeg;base64,${base64EncodeString}`;
-          } else {
-            throw new Error("No image data in response");
+      console.log("🎨 Attempting to generate image with Gemini 3.1 Flash Image...");
+      try {
+        // MUST use generateContent for Gemini models, NOT generateImages
+        const imageResponse = await ai.models.generateContent({
+          model: 'gemini-3.1-flash-image-preview',
+          contents: jsonResponse.visual_prompt,
+          config: {
+            responseModalities: ["IMAGE"]
           }
-        } catch (imageError) {
-          console.error("Gemini Imagen Error:", imageError);
-          // Fallback if image generation fails (maybe to a public style folder image?)
-          // But since we are dynamic, returning null lets the frontend keep the current image
-          // or we provide a dramatic fallback from local public if needed
-          jsonResponse.imageUrl = null; // Let the frontend keep the current scene
-        }
+        });
+        
+        console.log("✅ Image generation SUCCESS!");
+        const base64EncodeString = imageResponse.candidates[0].content.parts[0].inlineData.data;
+        jsonResponse.imageUrl = `data:image/jpeg;base64,${base64EncodeString}`;
+        
+      } catch (imageError) {
+        console.error("🚨 IMAGE GEN ERROR 🚨:", imageError);
+        jsonResponse.imageUrl = undefined; // Prevents the frontend from freezing
+      }
       }
 
       res.json(jsonResponse);

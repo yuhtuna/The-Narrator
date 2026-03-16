@@ -7,11 +7,8 @@ interface DashboardProps {
 }
 
 export interface GameConfig {
-  character: string;
   style: string;
   genre: string;
-  customImage?: File | null;
-  customName?: string;
 }
 
 function ManaParticles() {
@@ -90,33 +87,20 @@ export const GENRES = [
 ];
 
 export function Dashboard({ onStartGame }: DashboardProps) {
-  const [selectedCharacter, setSelectedCharacter] = useState<string | null>(null);
   const [selectedStyle, setSelectedStyle] = useState<string | null>(null);
   const [selectedGenre, setSelectedGenre] = useState<string | null>(null);
-  const [customImage, setCustomImage] = useState<File | null>(null);
-  const [customName, setCustomName] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
 
   const handleStart = () => {
-    if (selectedCharacter && selectedStyle && selectedGenre) {
+    if (selectedStyle && selectedGenre) {
       setIsLoading(true);
       // Simulate loading delay before actual start
       setTimeout(() => {
         onStartGame({
-          character: selectedCharacter,
           style: selectedStyle,
           genre: selectedGenre,
-          customImage,
-          customName: selectedCharacter === 'custom' && customName.trim() !== '' ? customName.trim() : undefined
         });
       }, 2000);
-    }
-  };
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setCustomImage(e.target.files[0]);
-      setSelectedCharacter('custom');
     }
   };
 
@@ -136,7 +120,7 @@ export function Dashboard({ onStartGame }: DashboardProps) {
   }
 
   // 1. The Dashboard View
-  const isReady = selectedCharacter && selectedStyle && selectedGenre;
+  const isReady = selectedStyle && selectedGenre;
 
   return (
     <div className="h-screen overflow-y-auto bg-zinc-950 text-white font-sans selection:bg-emerald-500/30 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-zinc-900 [&::-webkit-scrollbar-thumb]:bg-zinc-700 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-zinc-500">
@@ -166,95 +150,7 @@ export function Dashboard({ onStartGame }: DashboardProps) {
 
         <div className="space-y-20">
         
-          {/* Section 1: Character */}
-          <section>
-            <h2 className="text-2xl font-bold text-white mb-8 flex items-center gap-3 border-l-4 border-emerald-500 pl-4">
-              <User className="w-6 h-6 text-emerald-400" /> 
-              <span className="tracking-wide uppercase">Choose Your Character</span>
-            </h2>
-            
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
-              {/* Custom Upload Card */}
-              <div 
-                className={`aspect-[2/3] relative group cursor-pointer border-2 border-dashed rounded-2xl flex flex-col items-center justify-center transition-all duration-300 overflow-hidden ${
-                  selectedCharacter === 'custom' 
-                    ? 'border-emerald-500 bg-emerald-950/30 shadow-[0_0_30px_rgba(16,185,129,0.2)]' 
-                    : 'border-zinc-700 hover:border-zinc-500 hover:bg-zinc-900/50'
-                }`}
-              >
-                <input 
-                  type="file" 
-                  accept="image/*" 
-                  onChange={handleFileUpload}
-                  className="absolute inset-0 opacity-0 cursor-pointer z-20"
-                />
-                <div className="z-10 flex flex-col items-center p-4 text-center">
-                  <Upload className={`w-12 h-12 mb-4 transition-colors ${selectedCharacter === 'custom' ? 'text-emerald-400' : 'text-zinc-500 group-hover:text-zinc-300'}`} />
-                  <span className={`font-medium text-sm uppercase tracking-wider ${selectedCharacter === 'custom' ? 'text-emerald-400' : 'text-zinc-500 group-hover:text-zinc-300'}`}>
-                    {customImage ? 'Image Uploaded' : 'Scan Character'}
-                  </span>
-                  {!customImage && (
-                    <span className="text-xs text-zinc-500 mt-2">Upload a photo, drawing, or object to be the character.</span>
-                  )}
-                </div>
-                {selectedCharacter === 'custom' && (
-                  <div className="absolute top-3 right-3 bg-emerald-500 rounded-full p-1.5 z-20 shadow-lg">
-                    <Check className="w-4 h-4 text-black stroke-[3]" />
-                  </div>
-                )}
-                {/* Preview of uploaded image if available */}
-                {customImage && (
-                   <img 
-                     src={URL.createObjectURL(customImage)} 
-                     alt="Custom Upload" 
-                     className="absolute inset-0 w-full h-full object-cover opacity-40"
-                   />
-                )}
-                {selectedCharacter === 'custom' && (
-                  <div className="absolute bottom-4 left-4 right-4 z-30">
-                    <input
-                      type="text"
-                      placeholder="Enter Character Name..."
-                      value={customName}
-                      onChange={(e) => setCustomName(e.target.value)}
-                      onClick={(e) => e.stopPropagation()}
-                      className="w-full bg-zinc-950/90 border border-emerald-500/50 rounded-md px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400 backdrop-blur-md transition-all"
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* Default Characters */}
-              {CHARACTERS.map((char) => (
-                <div 
-                  key={char.id}
-                  onClick={() => {
-                    setSelectedCharacter(char.id);
-                    setCustomImage(null);
-                  }}
-                  className={`aspect-[2/3] relative group cursor-pointer rounded-2xl overflow-hidden transition-all duration-500 ${
-                    selectedCharacter === char.id 
-                      ? 'ring-4 ring-emerald-500 shadow-[0_0_40px_rgba(16,185,129,0.4)] scale-[1.02] z-10' 
-                      : 'hover:scale-[1.02] hover:shadow-2xl opacity-70 hover:opacity-100 grayscale hover:grayscale-0'
-                  }`}
-                >
-                  <FallbackImage src={char.img} alt={char.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent flex items-end p-6">
-                    <span className={`font-bold text-lg uppercase tracking-wider ${selectedCharacter === char.id ? 'text-emerald-400' : 'text-white'}`}>
-                      {char.name}
-                    </span>
-                  </div>
-                  {selectedCharacter === char.id && (
-                    <div className="absolute top-3 right-3 bg-emerald-500 rounded-full p-1.5 shadow-lg">
-                      <Check className="w-4 h-4 text-black stroke-[3]" />
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* Section 2: Art Style */}
+          {/* Section 1: Art Style */}
           <section>
             <h2 className="text-2xl font-bold text-white mb-8 flex items-center gap-3 border-l-4 border-emerald-500 pl-4">
               <span className="tracking-wide uppercase">Art Style</span>

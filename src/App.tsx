@@ -4,8 +4,6 @@ import { DialogueBox } from './components/ui/DialogueBox';
 import { Dashboard, GameConfig, GENRES, STYLES } from './components/ui/Dashboard';
 import { useAudioSync } from './hooks/useAudioSync';
 import { Mic } from 'lucide-react';
-import { processImageForAPI } from './utils/imageUtils';
-import { AnimatePresence, motion } from 'motion/react';
 import { useGame } from './context/GameContext';
 
 export default function App() {
@@ -14,7 +12,6 @@ export default function App() {
   // View Routing State
   const [gameState, setGameState] = useState<'setup' | 'playing'>('setup');
   const [gameConfig, setGameConfig] = useState<GameConfig | null>(null);
-  const [userReferenceImage, setUserReferenceImage] = useState<string | null>(null);
 
   // Visual State Machine
   const [currentImage, setCurrentImage] = useState("/images/genres/DF.png"); // Default dark fantasy placeholder instead of picsum
@@ -23,7 +20,6 @@ export default function App() {
 
   // Narrative State
   const [narrative, setNarrative] = useState("The ink dries on the manuscript. The world awaits your command.");
-  const [alexExpression, setAlexExpression] = useState<'neutral' | 'surprised' | 'serious' | 'thinking'>('neutral');
   const [speaker, setSpeaker] = useState('Narrator');
   const [inputText, setInputText] = useState('');
 
@@ -46,7 +42,6 @@ export default function App() {
               body: JSON.stringify({
                 userAction: "The player has spoken. Listen to the provided audio to determine their action.",
                 previousContext: `Setting: ${gameConfig?.genre} / ${gameConfig?.style}. ${narrative}`,
-                imageBase64: userReferenceImage,
                 audioBase64: base64data,
                 gameConfig
               })
@@ -69,13 +64,9 @@ export default function App() {
   const handleDirectorResponse = (data: any) => {
     let script = data.narration_script || "";
     
-    // Parse [ALEX_TAG]
+    // Parse [ALEX_TAG] (If still returned by backend, strip it since character portrait is removed)
     const tagMatch = script.match(/\[ALEX_TAG:(\w+)\]/);
     if (tagMatch) {
-      const expression = tagMatch[1].toLowerCase();
-      if (['neutral', 'surprised', 'serious', 'thinking'].includes(expression)) {
-        setAlexExpression(expression as any);
-      }
       script = script.replace(/\[ALEX_TAG:\w+\]/, '').trim();
     }
 
@@ -96,15 +87,14 @@ export default function App() {
   useEffect(() => {
     if (gameState === 'playing' && narrative === "The ink dries on the manuscript. The world awaits your command.") {
       setIsProcessing(true);
-      setNarrative("Initializing world and summoning protagonist...");
+      setNarrative("Initializing world...");
       
       fetch('/api/director/process', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userAction: 'The player has entered the world. Introduce the scene and their character.',
+          userAction: 'The player has entered the world. Introduce the scene.',
           previousContext: `Setting: ${gameConfig?.genre} / ${gameConfig?.style}.`,
-          imageBase64: userReferenceImage,
           gameConfig
         })
       })
@@ -115,18 +105,9 @@ export default function App() {
         setIsProcessing(false);
       });
     }
-  }, [gameState, narrative, gameConfig, userReferenceImage]);
+  }, [gameState, narrative, gameConfig]);
 
   const handleStartGame = async (config: GameConfig) => {
-    if (config.customImage) {
-      try {
-        const compressedImage = await processImageForAPI(config.customImage);
-        setUserReferenceImage(compressedImage);
-      } catch (error) {
-        console.error("Failed to process custom image:", error);
-      }
-    }
-
     // Set an initial background based on the chosen genre before AI generates one
     const selectedGenreInfo = GENRES.find(g => g.id === config.genre);
     if (selectedGenreInfo) {
@@ -161,7 +142,6 @@ export default function App() {
         body: JSON.stringify({
           userAction: actionText,
           previousContext: `Setting: ${gameConfig?.genre} / ${gameConfig?.style}. ${narrative}`,
-          imageBase64: userReferenceImage,
           gameConfig
         })
       });
@@ -206,27 +186,6 @@ export default function App() {
 
         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-black/40 pointer-events-none z-10" />
 
-        {/* --- CHARACTER LAYER --- */}
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={alexExpression}
-            initial={{ opacity: 0, x: 50 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 50 }}
-            className="absolute bottom-0 right-0 w-1/3 h-full z-20 pointer-events-none flex items-end justify-end"
-          >
-            {/* Character Portrait */}
-            <div className="relative w-full h-4/5">
-               <img 
-                src={gameConfig?.character === 'custom' && userReferenceImage ? `data:image/jpeg;base64,${userReferenceImage}` : '/images/characters/alex.png'}
-                alt={gameConfig?.customName || "Protagonist"}
-                className="w-full h-full object-contain drop-shadow-[0_0_30px_rgba(52,211,153,0.3)]"
-                referrerPolicy="no-referrer"
-               />
-            </div>
-          </motion.div>
-        </AnimatePresence>
-
         <div className="absolute bottom-10 left-0 right-0 px-6 flex flex-col items-center justify-end z-40 pointer-events-none">
           {/* Narrative Interface */}
           <DialogueBox 
@@ -263,8 +222,7 @@ export default function App() {
         </div>
 
         {/* Overlays */}
-        <AnimatePresence>
-        </AnimatePresence>
+        {/* Intentionally left blank for future overlays */}
 
       </div>
     </GameLayout>

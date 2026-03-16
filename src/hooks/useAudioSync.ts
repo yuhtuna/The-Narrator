@@ -23,30 +23,20 @@ interface UseAudioSyncReturn {
  * Manages the microphone input timer, suspense audio loop, and narration playback.
  */
 export function useAudioSync({ onRecordingComplete }: UseAudioSyncProps = {}): UseAudioSyncReturn {
+  // State variables back to just audio/recording hooks since we are handling audio via API
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Initialize voices on mount
+  // Initialize voices on mount (kept empty for clean unmount)
   useEffect(() => {
-    const populateVoices = () => {
-      const voices = window.speechSynthesis.getVoices();
-      if (voices.length > 0) {
-        setAvailableVoices(voices);
-      }
-    };
-
-    populateVoices();
-    window.speechSynthesis.onvoiceschanged = populateVoices;
-
     return () => {
       stopAllAudio();
-      window.speechSynthesis.onvoiceschanged = null;
     };
   }, []);
 
@@ -54,6 +44,11 @@ export function useAudioSync({ onRecordingComplete }: UseAudioSyncProps = {}): U
    * Stops all currently playing audio and speech synthesis.
    */
   const stopAllAudio = useCallback(() => {
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause();
+      currentAudioRef.current.src = "";
+      currentAudioRef.current = null;
+    }
     window.speechSynthesis.cancel();
     
     setIsProcessing(false);
@@ -120,57 +115,38 @@ export function useAudioSync({ onRecordingComplete }: UseAudioSyncProps = {}): U
   /**
    * Handles the Voice Handoff: Stops suspense, plays impact, speaks text.
    */
-  const playNarration = useCallback((text: string, speaker: string = 'Narrator') => {
+  const playNarration = useCallback(async (text: string, speaker: string = 'Narrator') => {
     setIsProcessing(false);
     setIsSpeaking(true);
 
-    // Start Speech Synthesis (Native Browser API)
-    // We add a small delay to let the thud impact hit first
-    setTimeout(() => {
-      const utterance = new SpeechSynthesisUtterance(text);
-      
-      const voices = availableVoices.length > 0 ? availableVoices : window.speechSynthesis.getVoices();
-      
-      if (voices.length > 0) {
-        // Filter to more premium/human-like cloud voices first (usually include 'Google' in Chrome, or 'Online'/'Premium' in Edge)
-        const premiumVoices = voices.filter(v => v.name.includes('Google') || v.name.includes('Premium') || v.name.includes('Natural'));
-        const activePool = premiumVoices.length > 0 ? premiumVoices : voices;
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause();
+    }
 
-        // Simple string hash to deterministically pick a voice array index
-        const hash = speaker.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-        
-        if (speaker.toLowerCase() === 'narrator') {
-          // Deep, clear voice
-          const narratorVoice = activePool.find(v => v.name.includes('UK English Male') || v.name.includes('Male') || v.name.includes('Mark'));
-          if (narratorVoice) utterance.voice = narratorVoice;
-          utterance.pitch = 0.5;
-          utterance.rate = 0.95;
-        } else if (speaker.toLowerCase() === 'alex') {
-          // Youthful active voice
-          const alexVoice = activePool.find(v => v.name.includes('US English Male') || v.name.includes('Zira') || v.name.includes('Female'));
-          if (alexVoice) utterance.voice = alexVoice;
-          utterance.pitch = 1.0;
-          utterance.rate = 1.05;
-        } else {
-          // For NPCs
-          const index = hash % activePool.length;
-          utterance.voice = activePool[index];
-          
-          utterance.pitch = 0.6 + ((hash % 10) / 10) * 0.8; // Range 0.6 - 1.4
-          utterance.rate = 0.85 + ((hash % 5) / 10) * 0.3; // Range 0.85 - 1.15
-        }
-      }
-
-      utterance.onend = () => {
+    try {
+      const response = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, speaker }),
+      });
+      const data = await response.json();
+      
+      if (data.audioBase64) {
+        const audioSrc = `data:${data.mimeType};base64,${data.audioBase64}`;
+        const audio = new Audio(audioSrc);
+        currentAudioRef.current = audio;
+        audio.onended = () => setIsSpeaking(false);
+        await audio.play();
+      } else {
         setIsSpeaking(false);
-      };
+      }
+    } catch (error) {
+      console.error("TTS Error:", error);
+      setIsSpeaking(false);
+    }
+  }, []);
 
-      window.speechSynthesis.speak(utterance);
-    }, 300); // 300ms delay for dramatic effect
-
-  }, [availableVoices]);
-
-  const playFillerLine = useCallback(() => {
+  const playFillerLine = useCallback(async () => {
     const lines = [
       "The threads of fate weave your choice...",
       "Let us see what the manuscript reveals...",
@@ -179,20 +155,34 @@ export function useAudioSync({ onRecordingComplete }: UseAudioSyncProps = {}): U
     ];
     const randomLine = lines[Math.floor(Math.random() * lines.length)];
     
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(randomLine);
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause();
+    }
     
-    const voices = availableVoices.length > 0 ? availableVoices : window.speechSynthesis.getVoices();
-    const premiumVoices = voices.filter(v => v.name.includes('Google') || v.name.includes('Premium') || v.name.includes('Natural'));
-    const activePool = premiumVoices.length > 0 ? premiumVoices : voices;
-    
-    const narratorVoice = activePool.find(v => v.name.includes('UK English Male') || v.name.includes('Male') || v.name.includes('Mark'));
-    if (narratorVoice) utterance.voice = narratorVoice;
-    
-    utterance.rate = 0.9;
-    utterance.pitch = 0.5;
-    window.speechSynthesis.speak(utterance);
-  }, [availableVoices]);
+    setIsSpeaking(true);
+
+    try {
+      const response = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: randomLine, speaker: 'Narrator' }),
+      });
+      const data = await response.json();
+      
+      if (data.audioBase64) {
+        const audioSrc = `data:${data.mimeType};base64,${data.audioBase64}`;
+        const audio = new Audio(audioSrc);
+        currentAudioRef.current = audio;
+        audio.onended = () => setIsSpeaking(false);
+        await audio.play();
+      } else {
+        setIsSpeaking(false);
+      }
+    } catch (error) {
+      console.error("TTS Error:", error);
+      setIsSpeaking(false);
+    }
+  }, []);
 
   return {
     isRecording,
