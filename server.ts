@@ -85,8 +85,7 @@ async function startServer() {
 
       const ai = new GoogleGenAI({ apiKey });
 
-      const systemInstruction = `You are the elite Director of a real-time ${genre} visual novel in a ${style} art style. The User is the Main Character. Address them strictly as "You". NEVER use the name "Alex" or invent a name for them. >    Starting Anchor: If this is the very first turn of the game, ALWAYS start the scene with the user finishing a drink at a local establishment (e.g., a fantasy tavern, a cyberpunk noodle bar, or a modern cafe depending on the ${genre}) and stepping outside to discover something unexpected.
-Keep the narration_script punchy and atmospheric (2-4 sentences max). Determine who is speaking and output their name in speaker_name. Output a highly descriptive visual_prompt for the background art.`;
+      const systemInstruction = `You are the Director of a ${genre} visual novel. The global plot is strictly deterministic and full of massive, shocking twists that you control. The User is the Main Character ("You"), but they only control local, immediate actions. Drive the story forward aggressively. End your script by explicitly asking what the user does next AND set requires_user_action to true. IF you are just narrating a sudden plot twist and don't need input yet, set requires_user_action to false.`;
 
       const promptText = `
 Previous Context: ${previousContext || "The story begins."}
@@ -111,13 +110,13 @@ User Action: ${userAction}
         });
       }
 
-      const requiredFields = ["visual_prompt", "narration_script", "speaker_name"];
+      const requiredFields = ["visual_prompt", "narration_script", "speaker_name", "requires_user_action"];
       if (imageBase64) {
         requiredFields.push("item_name", "item_description");
       }
 
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-2.5-flash",
         contents: [{ parts }],
         config: {
           systemInstruction: systemInstruction,
@@ -130,6 +129,7 @@ User Action: ${userAction}
               speaker_name: { type: Type.STRING },
               item_name: { type: Type.STRING },
               item_description: { type: Type.STRING },
+              requires_user_action: { type: Type.BOOLEAN },
             },
             required: requiredFields,
           },
@@ -144,25 +144,18 @@ User Action: ${userAction}
       const jsonResponse = JSON.parse(responseText);
 
       if (jsonResponse.visual_prompt) {
-      console.log("🎨 Attempting to generate image with Gemini 3.1 Flash Image...");
-      try {
-        // MUST use generateContent for Gemini models, NOT generateImages
-        const imageResponse = await ai.models.generateContent({
-          model: 'gemini-3.1-flash-image-preview',
-          contents: jsonResponse.visual_prompt,
-          config: {
-            responseModalities: ["IMAGE"]
-          }
-        });
-        
-        console.log("✅ Image generation SUCCESS!");
-        const base64EncodeString = imageResponse.candidates[0].content.parts[0].inlineData.data;
-        jsonResponse.imageUrl = `data:image/jpeg;base64,${base64EncodeString}`;
-        
-      } catch (imageError) {
-        console.error("🚨 IMAGE GEN ERROR 🚨:", imageError);
-        jsonResponse.imageUrl = undefined; // Prevents the frontend from freezing
-      }
+        try {
+          const imageResponse = await ai.models.generateImages({
+            model: 'imagen-3.0-generate-001',
+            prompt: jsonResponse.visual_prompt,
+            config: { numberOfImages: 1, outputMimeType: 'image/jpeg' }
+          });
+          const base64EncodeString = imageResponse.generatedImages[0].image.imageBytes;
+          jsonResponse.imageUrl = `data:image/jpeg;base64,${base64EncodeString}`;
+        } catch (imageError) {
+          console.error("🚨 IMAGE GEN ERROR 🚨:", imageError);
+          jsonResponse.imageUrl = undefined;
+        }
       }
 
       res.json(jsonResponse);

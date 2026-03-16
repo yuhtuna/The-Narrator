@@ -22,6 +22,7 @@ export default function App() {
   const [narrative, setNarrative] = useState("The ink dries on the manuscript. The world awaits your command.");
   const [speaker, setSpeaker] = useState('Narrator');
   const [inputText, setInputText] = useState('');
+  const [awaitingInput, setAwaitingInput] = useState(true);
 
   // Audio Sync Hook
   const { isRecording, startRecording, playNarration, playFillerLine } = useAudioSync({
@@ -74,6 +75,7 @@ export default function App() {
     const currentSpeaker = data.speaker_name || 'Narrator';
     setSpeaker(currentSpeaker);
     playNarration(script, currentSpeaker);
+    setAwaitingInput(data.requires_user_action !== false); // Default to true unless explicitly false
 
     if (data.imageUrl) {
       setNextImage(data.imageUrl);
@@ -122,6 +124,26 @@ export default function App() {
     if (nextImage) {
       setCurrentImage(nextImage);
       setNextImage(null);
+      setIsProcessing(false);
+    }
+  };
+
+  const handleTextSubmitOverride = async (overrideText: string) => {
+    setIsProcessing(true);
+    try {
+      const response = await fetch('/api/director/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userAction: overrideText,
+          previousContext: `Setting: ${gameConfig?.genre} / ${gameConfig?.style}. ${narrative}`,
+          gameConfig
+        })
+      });
+      const data = await response.json();
+      handleDirectorResponse(data);
+    } catch (error) {
+      console.error("API Error", error);
       setIsProcessing(false);
     }
   };
@@ -201,13 +223,13 @@ export default function App() {
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleTextSubmit()}
-              disabled={isProcessing || isRecording}
+              disabled={isProcessing || isRecording || !awaitingInput}
               placeholder="Type your action..."
               className="flex-1 bg-black/60 border border-emerald-500/30 text-white placeholder:text-emerald-500/50 rounded-full px-6 py-4 backdrop-blur-md outline-none focus:border-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed"
             />
             <button
               onClick={startRecording}
-              disabled={isRecording || isProcessing}
+              disabled={isRecording || isProcessing || !awaitingInput}
               className={`group relative flex items-center justify-center p-4 rounded-full transition-all duration-300 ${
                 isRecording 
                   ? 'bg-red-600/80 text-white shadow-[0_0_30px_rgba(220,38,38,0.8)] scale-105 animate-pulse' 
@@ -219,6 +241,16 @@ export default function App() {
               <Mic className={`w-6 h-6 ${isRecording ? 'animate-bounce' : ''}`} />
             </button>
           </div>
+
+          {!awaitingInput && !isProcessing && (
+            <button 
+              onClick={() => handleTextSubmitOverride("[The player listens in shocked silence. Continue the plot.]")}
+              className="mt-4 px-8 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full font-bold shadow-lg animate-pulse pointer-events-auto"
+            >
+              Continue...
+            </button>
+          )}
+
         </div>
 
         {/* Overlays */}
